@@ -1,0 +1,503 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import { useEditorStore } from '@/store/editor';
+import { Plus, Scissors, Clock, Layers, Eye, EyeOff, Lock, Unlock } from 'lucide-react';
+
+interface TimelineProps {
+  fps: number;
+}
+
+export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
+  const {
+    scenes,
+    selectedSceneId,
+    currentFrame,
+    setCurrentFrame,
+    draggedScene,
+    setDraggedScene,
+    updateScenePosition,
+    endSceneDrag,
+    tracks,
+    selectedTrackId,
+    selectTrack,
+    toggleTrackVisibility,
+    toggleTrackLock,
+    timelineZoom,
+    setTimelineZoom,
+    snapEnabled,
+    setSnapEnabled,
+    snapType,
+    setSnapType,
+    keyframes,
+    selectedKeyframeId,
+    selectKeyframe,
+    addKeyframe,
+    deleteKeyframe,
+    reorderScenes,
+  } = useEditorStore();
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartX, setDragStartX] = useState(0);
+  const [dragStartFrame, setDragStartFrame] = useState(0);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizingSide, setResizingSide] = useState<'start' | 'end'>('start');
+  const [resizingSceneId, setResizingSceneId] = useState<string | null>(null);
+  const [resizingStartFrame, setResizingStartFrame] = useState(0);
+  const [resizingDuration, setResizingDuration] = useState(0);
+  const timelineRef = useRef<HTMLDivElement>(null);
+
+  // 计算总帧数
+  const totalFrames = scenes.reduce((sum, s) => sum + s.durationFrames, 0) || 180;
+  const totalSeconds = Math.floor(totalFrames / fps);
+
+  // 计算每个帧的宽度（根据缩放）
+  const pixelsPerFrame = 10 * timelineZoom;
+
+  // 计算时间轴宽度
+  const timelineWidth = totalFrames * pixelsPerFrame;
+
+  // 处理时间轴点击
+  const handleTimelineClick = (e: React.MouseEvent) => {
+    if (!timelineRef.current) return;
+
+    const rect = timelineRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const frame = Math.floor(x / pixelsPerFrame);
+
+    // 应用吸附
+    let finalFrame = frame;
+    if (snapEnabled) {
+      if (snapType === 'frame') {
+        finalFrame = Math.round(frame);
+      } else if (snapType === 'second') {
+        finalFrame = Math.round(frame / fps) * fps;
+      } else if (snapType === 'keyframe') {
+        // 找到最近的关键帧
+        const nearestKeyframe = keyframes.reduce((nearest, kf) => {
+          const nearestDiff = Math.abs(nearest.frame - frame);
+          const kfDiff = Math.abs(kf.frame - frame);
+          return kfDiff < nearestDiff ? kf : nearest;
+        }, keyframes[0]);
+
+        if (nearestKeyframe && Math.abs(nearestKeyframe.frame - frame) < 5) {
+          finalFrame = nearestKeyframe.frame;
+        }
+      }
+    }
+
+    setCurrentFrame(Math.max(0, Math.min(finalFrame, totalFrames)));
+  };
+
+  // 处理场景拖拽开始
+  const handleSceneDragStart = (sceneId: string, e: React.MouseEvent) => {
+    const scene = scenes.find(s => s.id === sceneId);
+    if (!scene) return;
+
+    setIsDragging(true);
+    setDragStartX(e.clientX);
+    setDragStartFrame(scene.startFrame);
+    setDraggedScene({
+      id: sceneId,
+      isDragging: true,
+      dragOffsetX: 0,
+      originalStartFrame: scene.startFrame,
+    });
+    selectScene(sceneId);
+  };
+
+  // 处理场景拖拽中
+  const handleSceneDrag = (e: React.MouseEvent) => {
+    if (!draggedScene || !isDragging) return;
+
+    const deltaX = e.clientX - dragStartX;
+    const deltaFrames = Math.round(deltaX / pixelsPerFrame);
+    const newStartFrame = Math.max(0, dragStartFrame + deltaFrames);
+
+    // 临时更新场景位置（但不应用吸附）
+    updateScenePosition(draggedScene.id, newStartFrame);
+  };
+
+  // 处理场景拖拽结束
+  const handleSceneDragEnd = () => {
+    if (!draggedScene) return;
+
+    setIsDragging(false);
+    endSceneDrag();
+  };
+
+  // 处理场景延伸开始
+  const handleResizeStart = (sceneId: string, side: 'start' | 'end', e: React.MouseEvent) => {
+    e.stopPropagation();
+    const scene = scenes.find(s => s.id === sceneId);
+    if (!scene) return;
+
+    setIsResizing(true);
+    setResizingSide(side);
+    setResizingSceneId(sceneId);
+    setResizingStartFrame(scene.startFrame);
+    setResizingDuration(scene.durationFrames);
+    setDragStartX(e.clientX);
+    selectScene(sceneId);
+  };
+
+  // 处理场景延伸中
+  const handleResize = (e: React.MouseEvent) => {
+    if (!isResizing || !resizingSceneId) return;
+
+    const deltaX = e.clientX - dragStartX;
+    const deltaFrames = Math.round(deltaX / pixelsPerFrame);
+
+    let newStartFrame = resizingStartFrame;
+    let newDurationFrames = resizingDuration;
+
+    if (resizingSide === 'start') {
+      // 调整开始帧
+      newStartFrame = Math.max(0, resizingStartFrame + deltaFrames);
+      const frameChange = newStartFrame - resizingStartFrame;
+      newDurationFrames = Math.max(30, resizingDuration - frameChange);
+    } else {
+      // 调整时长
+      newDurationFrames = Math.max(30, resizingDuration + deltaFrames);
+    }
+
+    // 应用吸附
+    if (snapEnabled && snapType !== 'none') {
+      if (snapType === 'frame') {
+        newDurationFrames = Math.round(newDurationFrames);
+      } else if (snapType === 'second') {
+        newDurationFrames = Math.round(newDurationFrames / fps) * fps;
+      }
+    }
+
+    // 更新场景
+    updateScene(resizingSceneId, {
+      startFrame: newStartFrame,
+      durationFrames: newDurationFrames,
+    });
+  };
+
+  // 处理场景延伸结束
+  const handleResizeEnd = () => {
+    setIsResizing(false);
+    setResizingSceneId(null);
+  };
+
+  // 添加场景
+  const handleAddScene = () => {
+    const newScene = {
+      id: `scene-${Date.now()}`,
+      name: `场景 ${scenes.length + 1}`,
+      type: 'video' as const,
+      startFrame: currentFrame,
+      durationFrames: 90,
+    };
+    useEditorStore.getState().addScene(newScene);
+  };
+
+  // 分割场景
+  const handleSplitScene = () => {
+    const currentScene = scenes.find(s => currentFrame >= s.startFrame && currentFrame < s.startFrame + s.durationFrames);
+    if (!currentScene) return;
+
+    const splitFrame = currentFrame;
+    const firstDuration = splitFrame - currentScene.startFrame;
+    const secondDuration = currentScene.durationFrames - firstDuration;
+
+    if (firstDuration < 10 || secondDuration < 10) return; // 太短不分割
+
+    const secondScene = {
+      ...currentScene,
+      id: `scene-${Date.now()}`,
+      name: `${currentScene.name} (2)`,
+      startFrame: splitFrame,
+      durationFrames: secondDuration,
+    };
+
+    // 更新第一个场景
+    updateScene(currentScene.id, {
+      durationFrames: firstDuration,
+    });
+
+    // 添加第二个场景
+    useEditorStore.getState().addScene(secondScene);
+  };
+
+  // 删除场景
+  const handleDeleteScene = (sceneId: string) => {
+    if (confirm('确定要删除这个场景吗？')) {
+      useEditorStore.getState().deleteScene(sceneId);
+    }
+  };
+
+  // 复制场景
+  const handleDuplicateScene = (sceneId: string) => {
+    const scene = scenes.find(s => s.id === sceneId);
+    if (!scene) return;
+
+    const newScene = {
+      ...scene,
+      id: `scene-${Date.now()}`,
+      name: `${scene.name} (副本)`,
+      startFrame: scene.startFrame + scene.durationFrames,
+    };
+    useEditorStore.getState().addScene(newScene);
+  };
+
+  // 切换轨道可见性
+  const handleToggleTrackVisibility = (trackId: string) => {
+    toggleTrackVisibility(trackId);
+  };
+
+  // 切换轨道锁定
+  const handleToggleTrackLock = (trackId: string) => {
+    toggleTrackLock(trackId);
+  };
+
+  // 获取当前场景
+  const currentScene = scenes.find(s => currentFrame >= s.startFrame && currentFrame < s.startFrame + s.durationFrames);
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* 时间轴头部 */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
+        <div className="flex items-center gap-4 text-gray-300">
+          <div className="flex items-center gap-2">
+            <Clock size={16} />
+            <span className="font-mono text-sm">
+              {Math.floor(currentFrame / fps).toString().padStart(2, '0')}:
+              {(currentFrame % fps).toString().padStart(2, '0')} / {totalSeconds}s
+            </span>
+          </div>
+          <div className="text-xs text-gray-500">
+            第 {currentFrame} 帧 / 共 {totalFrames} 帧
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* 场景操作按钮 */}
+          <button
+            onClick={handleSplitScene}
+            disabled={!currentScene}
+            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            title="分割场景"
+          >
+            <Scissors size={14} />
+            <span>分割</span>
+          </button>
+
+          <button
+            onClick={handleAddScene}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-sm flex items-center gap-2 transition"
+          >
+            <Plus size={16} />
+            <span>添加场景</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 时间轴内容 */}
+      <div className="flex-1 overflow-x-auto overflow-y-auto relative" ref={timelineRef}>
+        {/* 时间标尺 */}
+        <div
+          className="h-6 border-b border-gray-700 bg-gray-900 sticky top-0 z-10"
+          style={{ width: `${timelineWidth}px` }}
+        >
+          {Array.from({ length: Math.ceil(totalFrames / (fps * 5)) }).map((_, i) => {
+            const frame = i * fps * 5;
+            const time = Math.floor(frame / fps);
+            const left = frame * pixelsPerFrame;
+
+            return (
+              <div
+                key={i}
+                className="absolute top-0 bottom-0 flex items-end pb-1 border-l border-gray-700"
+                style={{ left: `${left}px` }}
+              >
+                <span className="text-xs text-gray-500 font-mono mb-1">
+                  {time}s
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 轨道区域 */}
+        <div className="relative" style={{ width: `${timelineWidth}px` }}>
+          {tracks.map((track, trackIndex) => (
+            <div key={track.id} className="mb-2">
+              {/* 轨道头部 */}
+              <div
+                className={`h-12 flex items-center gap-3 px-3 border-l-2 sticky left-0 bg-gray-900 border-r border-gray-700 z-20 transition-all ${
+                  selectedTrackId === track.id ? 'border-blue-500' : 'border-transparent'
+                }`}
+                style={{ width: '200px', background: '#111827' }}
+              >
+                {/* 轨道类型图标 */}
+                <div className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center">
+                  {track.type === 'video' && <Layers size={14} className="text-gray-400" />}
+                  {track.type === 'audio' && <span className="text-gray-400 text-xs">🎵</span>}
+                </div>
+
+                {/* 轨道名称 */}
+                <span className="text-sm text-gray-300 truncate flex-1">
+                  {track.name}
+                </span>
+
+                {/* 轨道操作按钮 */}
+                <div className="flex items-center gap-1">
+                  {/* 可见性切换 */}
+                  <button
+                    onClick={() => handleToggleTrackVisibility(track.id)}
+                    className="p-1 hover:bg-gray-800 rounded transition"
+                    title={track.visible ? '隐藏' : '显示'}
+                  >
+                    {track.visible ? <Eye size={14} className="text-gray-400" /> : <EyeOff size={14} className="text-gray-600" />}
+                  </button>
+
+                  {/* 锁定切换 */}
+                  <button
+                    onClick={() => handleToggleTrackLock(track.id)}
+                    className="p-1 hover:bg-gray-800 rounded transition"
+                    title={track.locked ? '解锁' : '锁定'}
+                  >
+                    {track.locked ? <Lock size={14} className="text-gray-400" /> : <Unlock size={14} className="text-gray-400" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* 轨道内容 */}
+              <div
+                className={`h-16 relative border-l-2 bg-gray-800/50 ${
+                  selectedTrackId === track.id ? 'border-blue-500' : 'border-transparent'
+                } ${!track.visible ? 'opacity-30' : ''}`}
+                onClick={(e) => {
+                  if (e.currentTarget === e.target) {
+                    selectTrack(track.id);
+                    handleTimelineClick(e);
+                  }
+                }}
+              >
+                {/* 场景 */}
+                {track.scenes.map((scene) => (
+                  <div
+                    key={scene.id}
+                    className={`absolute top-2 h-12 rounded transition-all flex items-center justify-center border-2 ${
+                      selectedSceneId === scene.id
+                        ? 'border-blue-500 bg-blue-900/30 z-10'
+                        : 'border-gray-700 bg-gray-700/50 hover:border-gray-600'
+                    } ${isDragging && draggedScene?.id === scene.id ? 'opacity-50' : ''} ${track.locked ? 'opacity-50 cursor-not-allowed' : 'cursor-move'}`}
+                    style={{
+                      left: `${scene.startFrame * pixelsPerFrame}px`,
+                      width: `${scene.durationFrames * pixelsPerFrame}px`,
+                    }}
+                    draggable={!track.locked}
+                    onDragStart={(e) => {
+                      e.preventDefault();
+                      handleSceneDragStart(scene.id, e);
+                    }}
+                    onDrag={handleSceneDrag}
+                    onDragEnd={handleSceneDragEnd}
+                    title={scene.name}
+                  >
+                    {/* 左侧延伸手柄 */}
+                    {!track.locked && (
+                      <div
+                        className="absolute left-0 top-0 bottom-0 w-1 bg-gray-500/50 hover:bg-blue-500 cursor-ew-resize z-20"
+                        style={{ width: '8px', left: '-4px' }}
+                        onMouseDown={(e) => handleResizeStart(scene.id, 'start', e)}
+                        onMouseMove={handleResize}
+                        onMouseUp={handleResizeEnd}
+                        onMouseLeave={handleResizeEnd}
+                      />
+                    )}
+
+                    {/* 右侧延伸手柄 */}
+                    {!track.locked && (
+                      <div
+                        className="absolute right-0 top-0 bottom-0 w-1 bg-gray-500/50 hover:bg-blue-500 cursor-ew-resize z-20"
+                        style={{ width: '8px', right: '-4px' }}
+                        onMouseDown={(e) => handleResizeStart(scene.id, 'end', e)}
+                        onMouseMove={handleResize}
+                        onMouseUp={handleResizeEnd}
+                        onMouseLeave={handleResizeEnd}
+                      />
+                    )}
+
+                    <span className="text-xs text-gray-300 truncate px-2 pointer-events-none">
+                      {scene.name}
+                    </span>
+
+                    {/* 场景操作按钮 */}
+                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDuplicateScene(scene.id);
+                        }}
+                        className="p-1 hover:bg-gray-600 rounded transition"
+                        title="复制"
+                      >
+                        <span className="text-xs">📋</span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteScene(scene.id);
+                        }}
+                        className="p-1 hover:bg-red-900/50 hover:text-red-400 rounded transition"
+                        title="删除"
+                      >
+                        <span className="text-xs">🗑️</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {/* 关键帧 */}
+                {keyframes
+                  .filter(kf => {
+                    const scene = track.scenes.find(s => s.id === kf.sceneId);
+                    return scene !== undefined;
+                  })
+                  .map((keyframe) => (
+                    <div
+                      key={keyframe.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selectKeyframe(keyframe.id === selectedKeyframeId ? null : keyframe.id);
+                        setCurrentFrame(keyframe.frame);
+                      }}
+                      className={`absolute top-0 w-2 h-2 rounded-full cursor-pointer transition-all ${
+                        selectedKeyframeId === keyframe.id
+                          ? 'bg-yellow-500 scale-150'
+                          : 'bg-yellow-700 hover:bg-yellow-500'
+                      }`}
+                      style={{
+                        left: `${keyframe.frame * pixelsPerFrame - 4}px`,
+                      }}
+                      title="关键帧"
+                    />
+                  ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 播放头 */}
+        <div
+          className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 pointer-events-none"
+          style={{ left: `${currentFrame * pixelsPerFrame}px` }}
+        >
+          <div className="absolute -top-2 -left-2 w-4 h-4 bg-red-500 rounded-t" />
+        </div>
+
+        {/* 当前时间指示器 */}
+        <div
+          className="absolute top-0 bottom-0 w-px bg-blue-500/20 pointer-events-none z-10"
+          style={{ left: `${currentFrame * pixelsPerFrame}px` }}
+        />
+      </div>
+    </div>
+  );
+};

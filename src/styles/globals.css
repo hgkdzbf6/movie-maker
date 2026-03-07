@@ -1,0 +1,293 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Remotion Video Editor - Global Styles
+   Version: v2.0 Professional
+   Reference: DaVinci Resolve, Premiere Pro
+   ============================================================ */
+
+:root {
+  /* ==================== Main Colors ==================== */
+
+  /* Background Colors - Dark Theme */
+  --bg-primary: #0a0a0a;       /* Dark gray-black background */
+  --bg-secondary: #141414;     /* Secondary background (slightly lighter) */
+  --bg-tertiary: #1e1e2e;     /* Card background */
+  --bg-hover: #2d2d2d;         /* Hover background */
+  --bg-active: #2d2d2d;          /* Active state */
+  --bg-elevated: #252525;       /* Elevated background */
+
+  /* Accent Colors - Professional Color Scheme */
+  --accent-primary: #e11d48;      /* Primary accent (red, like DaVinci) */
+  --accent-secondary: #3b82f6;   /* Secondary accent (blue) */
+  --accent-success: #10b981;      /* Success color (green) */
+  --accent-warning: #f59e0b;      /* Warning color (orange) */
+  --accent-error: #ef4444;        /* Error color (red) */
+
+  /* Text Colors */
+  --text-primary: #ffffff;         /* Primary text color */
+  --text-secondary: #e2e8f0;     /* Secondary text */
+  --text-muted: #9ca3af;          /* Muted text */
+  --text-disabled: #4b5563;       /* Disabled text */
+  --text-hint: #6b7280;          /* Hint text */
+
+  /* Border Colors */
+  --border-subtle: #2d2d2d;       /* Subtle border */
+  --border-medium: #3d3d3d;       /* Medium border */
+  --border-strong: #4a4a4a;       /* Strong border */
+  --border-focus: #e11d48;          /* Focus border */
+
+  /* Divider Lines */
+  --divider-light: #252525;       /* Light divider */
+  --divider-medium: #3d3d3d;       /* Medium divider */
+
+  /* Shadow System */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 2px 12px rgba(0, 0, 0, 0.20);
+  --shadow-xl: 0 2px 20px rgba(0, 0, 0, 0.25);
+  --shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 8px 20px rgba(225, 29, 72, 0.15); /* Accent color glow */
+
+  /* Border Radius System */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* Sizes */
+  --header-height: 56px;
+  --toolbar-height: 40px;
+  --sidebar-width: 280px;
+  --inspector-width: 300px;
+  --timeline-track-height: 72px;
+  --status-bar-height: 36px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Z-index Levels */
+  --z-dropdown: 100;
+  --z-modal: 1000;
+  --z-tooltip: 1100;
+  --z-notification: 2000;
+}
+
+/* ============================================================
+   Scrollbar Styles
+   ============================================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ============================================================
+   Global Reset
+   ============================================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   Utility Classes
+   ============================================================ */
+
+/* Button Base Styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: var(--shadow-md), 0 2px 6px rgba(225, 29, 72, 0.3);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #f43f5e;
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--shadow-inset);
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-medium);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+}
+
+.btn-ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-danger {
+  background: var(--accent-error);
+  color: white;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+.btn-icon-only {
+  padding: 8px;
+  min-width: 32px;
+}
+
+/* Input Field Base Styles */
+.input {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: var(--transition-normal);
+  width: 100%;
+}
+
+.input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.15);
+}
+
+.input::placeholder {
+  color: var(--text-disabled);
+}
+
+/* Card Base Styles */
+.card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.card-elevated {
+  box-shadow: var(--shadow-lg);
+}
+
+.card-interactive {
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.card-interactive:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-medium);
+}
+
+/* Badge Styles */
+.badge {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+}
+
+/* Divider */
+.divider {
+  height: 1px;
+  background: var(--divider-medium);
+  border: none;
+}
+
+.divider-vertical {
+  width: 1px;
+  height: 100%;
+  background: var(--divider-medium);
+}
+
+/* Tooltip */
+.tooltip {
+  position: fixed;
+  z-index: var(--z-tooltip);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  box-shadow: var(--shadow-xl);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.tooltip.visible {
+  opacity: 1;
+}
