@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useEditorStore, Scene } from '@/store/editor';
-import { Trash2, Copy, Settings, Lock, Unlock, Type, Move, Maximize2, RotateCw, Droplets, Palette, Hash } from 'lucide-react';
+import { Trash2, Copy, Settings, Type, Move, Maximize2, Droplets, Palette } from 'lucide-react';
 
 interface InspectorPanelProps {
   scene: Scene | null;

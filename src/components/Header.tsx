@@ -1,6 +1,6 @@
 'use client';
 
-import { Home, Save, Download, Settings, User, Play, Pause, Undo, Redo, Maximize2 } from 'lucide-react';
+import { Save, Download, Settings, User, Undo, Redo } from 'lucide-react';
 
 interface HeaderProps {
   projectName?: string;

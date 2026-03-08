@@ -2,8 +2,131 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useEditorStore } from '@/store/editor';
-import type { Track } from '@/store/editor';
+import type { Asset, Track } from '@/store/editor';
 import { Plus, Scissors, Clock, Layers, Eye, EyeOff, Lock, Unlock } from 'lucide-react';
+
+const audioWaveformCache = new Map<string, number[]>();
+
+const resolveNonOverlappingFrame = (
+  track: Track,
+  desiredStartFrame: number,
+  durationFrames: number,
+  excludeSceneId?: string
+) => {
+  const sortedScenes = track.scenes
+    .filter((scene) => scene.id !== excludeSceneId)
+    .slice()
+    .sort((a, b) => a.startFrame - b.startFrame);
+
+  let candidateFrame = Math.max(0, desiredStartFrame);
+
+  for (const scene of sortedScenes) {
+    const sceneStart = scene.startFrame;
+    const sceneEnd = scene.startFrame + scene.durationFrames;
+    const candidateEnd = candidateFrame + durationFrames;
+
+    if (candidateEnd <= sceneStart) {
+      break;
+    }
+
+    if (candidateFrame < sceneEnd && candidateEnd > sceneStart) {
+      candidateFrame = sceneEnd;
+    }
+  }
+
+  return candidateFrame;
+};
+
+const AudioWaveform: React.FC<{ asset?: Asset; bars: number }> = ({ asset, bars }) => {
+  const [waveform, setWaveform] = useState<number[] | null>(() => {
+    if (!asset) return null;
+    return audioWaveformCache.get(asset.id) ?? null;
+  });
+
+  useEffect(() => {
+    if (!asset) {
+      setWaveform(null);
+      return;
+    }
+
+    const cachedWaveform = audioWaveformCache.get(asset.id);
+    if (cachedWaveform) {
+      setWaveform(cachedWaveform);
+      return;
+    }
+
+    let cancelled = false;
+
+    const buildWaveform = async () => {
+      try {
+        const response = await fetch(asset.url);
+        const arrayBuffer = await response.arrayBuffer();
+        const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+        if (!AudioContextCtor) {
+          return;
+        }
+
+        const audioContext = new AudioContextCtor();
+
+        try {
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+          const channelData = audioBuffer.getChannelData(0);
+          const blockSize = Math.max(1, Math.floor(channelData.length / 96));
+          const normalized = Array.from({ length: 96 }, (_, index) => {
+            const start = index * blockSize;
+            const end = Math.min(channelData.length, start + blockSize);
+            let sum = 0;
+
+            for (let sample = start; sample < end; sample += 1) {
+              sum += Math.abs(channelData[sample]);
+            }
+
+            const average = end > start ? sum / (end - start) : 0;
+            return Math.max(0.12, Math.min(1, average * 3));
+          });
+
+          audioWaveformCache.set(asset.id, normalized);
+          if (!cancelled) {
+            setWaveform(normalized);
+          }
+        } finally {
+          void audioContext.close();
+        }
+      } catch {
+        if (!cancelled) {
+          setWaveform(Array.from({ length: 96 }, (_, index) => 0.2 + ((index * 11) % 45) / 100));
+        }
+      }
+    };
+
+    void buildWaveform();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [asset]);
+
+  const source = waveform ?? Array.from({ length: 96 }, (_, index) => 0.2 + ((index * 11) % 45) / 100);
+  const step = Math.max(1, Math.floor(source.length / bars));
+  const visibleBars = Array.from({ length: bars }, (_, index) => {
+    const slice = source.slice(index * step, Math.min(source.length, (index + 1) * step));
+    const peak = slice.length > 0 ? Math.max(...slice) : 0.2;
+    return Math.max(0.18, peak);
+  });
+
+  return (
+    <div className="absolute inset-0 flex items-center gap-0.5 px-2 pointer-events-none opacity-80">
+      {visibleBars.map((bar, index) => (
+        <span
+          key={`${asset?.id ?? 'audio'}-wave-${index}`}
+          className="flex-1 rounded-full bg-emerald-100/80"
+          style={{ height: `${Math.max(18, Math.round(bar * 100))}%` }}
+        />
+      ))}
+    </div>
+  );
+};
 
 interface TimelineProps {
   fps: number;
@@ -22,6 +145,7 @@ export const Timeline: React.FC<TimelineProps> = ({
 }) => {
   const {
     scenes,
+    assets,
     selectedSceneId,
     currentFrame,
     setCurrentFrame,
@@ -37,16 +161,11 @@ export const Timeline: React.FC<TimelineProps> = ({
     toggleTrackVisibility,
     toggleTrackLock,
     timelineZoom,
-    setTimelineZoom,
     snapEnabled,
-    setSnapEnabled,
     snapType,
-    setSnapType,
     keyframes,
     selectedKeyframeId,
     selectKeyframe,
-    addKeyframe,
-    deleteKeyframe,
   } = useEditorStore();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -347,7 +466,7 @@ export const Timeline: React.FC<TimelineProps> = ({
 
         {/* 轨道区域 */}
         <div className="relative" style={{ width: `${timelineWidth}px` }}>
-          {tracks.map((track, trackIndex) => (
+          {tracks.map((track) => (
             <div key={track.id} className="mb-2">
               {/* 轨道头部 */}
               <div
@@ -409,8 +528,14 @@ export const Timeline: React.FC<TimelineProps> = ({
                   const scrollLeft = timelineRef.current?.scrollLeft ?? 0;
                   const x = e.clientX - rect.left + scrollLeft;
                   const frame = getSnappedFrame(Math.round(x / pixelsPerFrame));
+                  const acceptsDraggedAsset =
+                    (draggedAssetType === 'audio' && track.type === 'audio') ||
+                    (draggedAssetType !== 'audio' && track.type !== 'audio');
+                  const resolvedFrame = acceptsDraggedAsset
+                    ? resolveNonOverlappingFrame(track, frame, previewDurationFrames)
+                    : frame;
 
-                  setDropPreview({ frame, trackId: track.id });
+                  setDropPreview({ frame: resolvedFrame, trackId: track.id });
                 }}
                 onDragLeave={(e) => {
                   if (e.currentTarget.contains(e.relatedTarget as Node | null)) {
@@ -428,9 +553,10 @@ export const Timeline: React.FC<TimelineProps> = ({
                   const scrollLeft = timelineRef.current?.scrollLeft ?? 0;
                   const x = e.clientX - rect.left + scrollLeft;
                   const frame = getSnappedFrame(Math.round(x / pixelsPerFrame));
+                  const resolvedFrame = resolveNonOverlappingFrame(track, frame, previewDurationFrames);
 
                   setDropPreview(null);
-                  onAssetDrop(frame, track.type, e);
+                  onAssetDrop(resolvedFrame, track.type, e);
                 }}
               >
                 {dropPreview?.trackId === track.id && (
@@ -464,99 +590,93 @@ export const Timeline: React.FC<TimelineProps> = ({
 
                 {/* 场景 */}
                 {track.scenes.map((scene) => (
-                  <div
-                    key={scene.id}
-                    className={`absolute top-2 h-12 rounded transition-all flex items-center overflow-hidden border-2 ${
-                      scene.type === 'audio'
-                        ? selectedSceneId === scene.id
-                          ? 'border-emerald-400 bg-emerald-500/25 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] z-10'
-                          : 'border-emerald-700/80 bg-emerald-500/15 hover:border-emerald-500/80'
-                        : selectedSceneId === scene.id
-                          ? 'border-blue-500 bg-blue-900/30 z-10'
-                          : 'border-gray-700 bg-gray-700/50 hover:border-gray-600'
-                    } ${isDragging && draggedScene?.id === scene.id ? 'opacity-50' : ''} ${track.locked ? 'opacity-50 cursor-not-allowed' : 'cursor-move'}`}
-                    style={{
-                      left: `${scene.startFrame * pixelsPerFrame}px`,
-                      width: `${scene.durationFrames * pixelsPerFrame}px`,
-                    }}
-                    draggable={!track.locked}
-                    onDragStart={(e) => {
-                      e.preventDefault();
-                      handleSceneDragStart(scene.id, e);
-                    }}
-                    onDrag={handleSceneDrag}
-                    onDragEnd={handleSceneDragEnd}
-                    title={scene.name}
-                  >
-                    {/* 左侧延伸手柄 */}
-                    {!track.locked && (
-                      <div
-                        className="absolute left-0 top-0 bottom-0 w-1 bg-gray-500/50 hover:bg-blue-500 cursor-ew-resize z-20"
-                        style={{ width: '8px', left: '-4px' }}
-                        onMouseDown={(e) => handleResizeStart(scene.id, 'start', e)}
-                        onMouseMove={handleResize}
-                        onMouseUp={handleResizeEnd}
-                        onMouseLeave={handleResizeEnd}
-                      />
-                    )}
+                  (() => {
+                    const sceneAsset = scene.type === 'audio'
+                      ? assets.find((asset) => asset.id === scene.content?.assetId)
+                      : undefined;
+                    const audioBarCount = Math.max(12, Math.min(72, Math.floor((scene.durationFrames * pixelsPerFrame) / 8)));
 
-                    {/* 右侧延伸手柄 */}
-                    {!track.locked && (
+                    return (
                       <div
-                        className="absolute right-0 top-0 bottom-0 w-1 bg-gray-500/50 hover:bg-blue-500 cursor-ew-resize z-20"
-                        style={{ width: '8px', right: '-4px' }}
-                        onMouseDown={(e) => handleResizeStart(scene.id, 'end', e)}
-                        onMouseMove={handleResize}
-                        onMouseUp={handleResizeEnd}
-                        onMouseLeave={handleResizeEnd}
-                      />
-                    )}
-
-                    {scene.type === 'audio' && (
-                      <div className="absolute inset-0 flex items-center gap-0.5 px-2 pointer-events-none opacity-70">
-                        {Array.from({ length: Math.max(8, Math.min(36, Math.floor(scene.durationFrames / 6))) }).map((_, index) => (
-                          <span
-                            key={`${scene.id}-wave-${index}`}
-                            className="w-1 rounded-full bg-emerald-200/70"
-                            style={{
-                              height: `${25 + ((index * 7) % 55)}%`,
-                            }}
+                        key={scene.id}
+                        className={`absolute top-2 h-12 rounded transition-all flex items-center overflow-hidden border-2 ${
+                          scene.type === 'audio'
+                            ? selectedSceneId === scene.id
+                              ? 'border-emerald-400 bg-emerald-500/25 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] z-10'
+                              : 'border-emerald-700/80 bg-emerald-500/15 hover:border-emerald-500/80'
+                            : selectedSceneId === scene.id
+                              ? 'border-blue-500 bg-blue-900/30 z-10'
+                              : 'border-gray-700 bg-gray-700/50 hover:border-gray-600'
+                        } ${isDragging && draggedScene?.id === scene.id ? 'opacity-50' : ''} ${track.locked ? 'opacity-50 cursor-not-allowed' : 'cursor-move'}`}
+                        style={{
+                          left: `${scene.startFrame * pixelsPerFrame}px`,
+                          width: `${scene.durationFrames * pixelsPerFrame}px`,
+                        }}
+                        draggable={!track.locked}
+                        onDragStart={(e) => {
+                          e.preventDefault();
+                          handleSceneDragStart(scene.id, e);
+                        }}
+                        onDrag={handleSceneDrag}
+                        onDragEnd={handleSceneDragEnd}
+                        title={scene.name}
+                      >
+                        {!track.locked && (
+                          <div
+                            className="absolute left-0 top-0 bottom-0 w-1 bg-gray-500/50 hover:bg-blue-500 cursor-ew-resize z-20"
+                            style={{ width: '8px', left: '-4px' }}
+                            onMouseDown={(e) => handleResizeStart(scene.id, 'start', e)}
+                            onMouseMove={handleResize}
+                            onMouseUp={handleResizeEnd}
+                            onMouseLeave={handleResizeEnd}
                           />
-                        ))}
+                        )}
+
+                        {!track.locked && (
+                          <div
+                            className="absolute right-0 top-0 bottom-0 w-1 bg-gray-500/50 hover:bg-blue-500 cursor-ew-resize z-20"
+                            style={{ width: '8px', right: '-4px' }}
+                            onMouseDown={(e) => handleResizeStart(scene.id, 'end', e)}
+                            onMouseMove={handleResize}
+                            onMouseUp={handleResizeEnd}
+                            onMouseLeave={handleResizeEnd}
+                          />
+                        )}
+
+                        {scene.type === 'audio' && <AudioWaveform asset={sceneAsset} bars={audioBarCount} />}
+
+                        <div className="relative z-10 flex w-full items-center gap-2 px-2 pointer-events-none">
+                          {scene.type === 'audio' && <span className="text-xs">🎵</span>}
+                          <span className={`text-xs truncate ${scene.type === 'audio' ? 'text-emerald-50 font-medium' : 'text-gray-300'}`}>
+                            {scene.name}
+                          </span>
+                        </div>
+
+                        <div className="absolute top-1 right-1 flex gap-1 opacity-0 hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDuplicateScene(scene.id);
+                            }}
+                            className="p-1 hover:bg-gray-600 rounded transition"
+                            title="复制"
+                          >
+                            <span className="text-xs">📋</span>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteScene(scene.id);
+                            }}
+                            className="p-1 hover:bg-red-900/50 hover:text-red-400 rounded transition"
+                            title="删除"
+                          >
+                            <span className="text-xs">🗑️</span>
+                          </button>
+                        </div>
                       </div>
-                    )}
-
-                    <div className="relative z-10 flex w-full items-center gap-2 px-2 pointer-events-none">
-                      {scene.type === 'audio' && <span className="text-xs">🎵</span>}
-                      <span className={`text-xs truncate ${scene.type === 'audio' ? 'text-emerald-50 font-medium' : 'text-gray-300'}`}>
-                        {scene.name}
-                      </span>
-                    </div>
-
-                    {/* 场景操作按钮 */}
-                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDuplicateScene(scene.id);
-                        }}
-                        className="p-1 hover:bg-gray-600 rounded transition"
-                        title="复制"
-                      >
-                        <span className="text-xs">📋</span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteScene(scene.id);
-                        }}
-                        className="p-1 hover:bg-red-900/50 hover:text-red-400 rounded transition"
-                        title="删除"
-                      >
-                        <span className="text-xs">🗑️</span>
-                      </button>
-                    </div>
-                  </div>
+                    );
+                  })()
                 ))}
 
                 {/* 关键帧 */}

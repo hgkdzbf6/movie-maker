@@ -9,8 +9,6 @@ import { User } from '@/lib/db';
 
 describe('Auth Tests', () => {
   afterEach(() => {
-    // 清理所有测试数据
-    const users = [];
     // 清理逻辑在 beforeEach 中处理
   });
 

@@ -3,7 +3,6 @@
  * 使用 Remotion CLI 渲染视频
  */
 
-import { spawn } from 'child_process';
 import { Project } from './db';
 import path from 'path';
 import fs from 'fs/promises';

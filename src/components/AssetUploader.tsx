@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Upload, X, FileVideo, FileImage, Music } from 'lucide-react';
+import { Upload, FileVideo, FileImage, Music } from 'lucide-react';
 
 export interface AssetFile {
   id: string;

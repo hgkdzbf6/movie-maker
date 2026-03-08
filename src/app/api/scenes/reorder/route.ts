@@ -32,7 +32,7 @@ export async function PUT(request: NextRequest) {
 
     const reordered = Scene.reorder(projects[0].id, fromIndex, toIndex);
     return NextResponse.json(reordered, { status: 200 });
-  } catch (error: any) {
+  } catch {
     return NextResponse.json([], { status: 200 });
   }
 }

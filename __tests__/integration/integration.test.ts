@@ -9,7 +9,6 @@ import { User, Project, Scene, Asset, Export, Keyframe } from '@/lib/db';
 
 describe('Integration Tests', () => {
   let user: any;
-  let token: string;
 
   beforeEach(async () => {
     // 创建测试用户并登录
@@ -19,8 +18,7 @@ describe('Integration Tests', () => {
       name: '测试用户',
     });
 
-    const result = await login('test@example.com', 'password123');
-    token = result.token;
+    await login('test@example.com', 'password123');
   });
 
   afterEach(() => {
@@ -105,14 +103,14 @@ describe('Integration Tests', () => {
       });
 
       // 3. 添加关键帧
-      const keyframe1 = Keyframe.create({
+      const _keyframe1 = Keyframe.create({
         sceneId: scene.id,
         frame: 0,
         properties: { x: 0, y: 0, opacity: 0 },
         interpolation: 'linear',
       });
 
-      const keyframe2 = Keyframe.create({
+      const _keyframe2 = Keyframe.create({
         sceneId: scene.id,
         frame: 90,
         properties: { x: 960, y: 540, opacity: 1 },
@@ -585,7 +583,7 @@ describe('Integration Tests', () => {
         name: '用户 1',
       });
 
-      const project1 = Project.create({
+      const _project1 = Project.create({
         userId: user1.id,
         name: '用户 1 的项目',
         config: {

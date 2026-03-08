@@ -457,9 +457,9 @@ export const useEditorStore = create<EditorState>()(
         };
       }),
 
-      setTimelineZoom: (zoom) => set((state) => ({
+      setTimelineZoom: (zoom) => set({
         timelineZoom: Math.max(0.1, Math.min(5, zoom))
-      })),
+      }),
 
       setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
 

@@ -12,7 +12,6 @@ import fs from 'fs/promises';
 
 describe('MP4 Export Integration Tests', () => {
   let user: any;
-  let token: string;
   let project: any;
   let scene: any;
   let asset: any;
@@ -25,8 +24,7 @@ describe('MP4 Export Integration Tests', () => {
       name: '导出测试用户',
     });
 
-    const result = await login('export-test@example.com', 'password123');
-    token = result.token;
+    await login('export-test@example.com', 'password123');
 
     // 创建测试项目
     project = Project.create({
@@ -372,7 +370,7 @@ describe('MP4 Export Integration Tests', () => {
       });
 
       // 3. 添加场景
-      const testScene = Scene.create({
+      const _testScene = Scene.create({
         projectId: testProject.id,
         name: '完整流程场景',
         type: 'video',

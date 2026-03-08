@@ -15,7 +15,6 @@
  * - 处理任务错误和重试
  */
 
-import { exec } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -166,8 +165,6 @@ const scheduledTasks: ScheduledTask[] = [
       console.log('💾 [数据库备份] 开始备份数据库...');
       const timestamp = new Date().toISOString();
       const logPath = path.join(LOGS_DIR, `backup-${timestamp}.log`);
-      const backupPath = path.join(BACKUP_DIR, `backup-${timestamp}.db`);
-
       try {
         // TODO: 实现数据库备份逻辑
         console.log('✅ [数据库备份] 数据库备份完成');

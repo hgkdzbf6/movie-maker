@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { User, Project, Scene, Asset, Export, Keyframe, DatabaseUtils, db } from '@/lib/db';
+import { User, Project, Scene, Asset, Export, Keyframe, db } from '@/lib/db';
 import path from 'path';
 import fs from 'fs';
 

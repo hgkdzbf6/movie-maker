@@ -4,7 +4,7 @@ import { Player } from '@remotion/player';
 import { VideoComposition } from '@/remotion/VideoComposition';
 import { useEditorStore } from '@/store/editor';
 import { Play, Pause, Download, Settings, Maximize2, Save, Undo, Redo, ChevronRight, Layers, Scissors, Plus, X } from 'lucide-react';
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { AssetUploader, AssetFile } from '@/components/AssetUploader';
 import { AssetList } from '@/components/AssetList';
 import { Timeline } from '@/components/Timeline';
@@ -31,7 +31,7 @@ export default function EditorPage() {
   } = useEditorStore();
 
   const [activePanel, setActivePanel] = useState<'timeline' | 'assets' | 'inspector'>('timeline');
-  const [assetFiles, setAssetFiles] = useState<AssetFile[]>([]);
+  const [, setAssetFiles] = useState<AssetFile[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeTab, setActiveTab] = useState<'assets' | 'project' | 'export'>('assets');
   const [isDraggingAsset, setIsDraggingAsset] = useState(false);
@@ -140,7 +140,6 @@ export default function EditorPage() {
 
   const totalFrames = scenes.reduce((sum, s) => sum + s.durationFrames, 0);
   const totalSeconds = Math.floor(totalFrames / fps);
-  const currentSeconds = Math.floor(currentFrame / fps);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-950 text-gray-100 overflow-hidden">

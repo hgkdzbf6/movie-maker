@@ -3,12 +3,10 @@
  * 测试项目、场景、素材管理 API
  */
 
-import { createMocks, createMockSession } from '@remotion/mocks';
 import { expect } from '@jest/globals';
-import { renderToString } from 'react-dom/server';
 
 import { GET, POST, PUT, DELETE } from '@/app/api/projects/route';
-import { GET as GETScenes, POST as POSTScenes, PUT as PUTScenes, DELETE as DELETEScenes } from '@/app/api/projects/[id]/scenes/route';
+import { POST as POSTScenes, PUT as PUTScenes, DELETE as DELETEScenes } from '@/app/api/projects/[id]/scenes/route';
 import { GET as GETAssets, POST as POSTAssets, DELETE as DELETEAssets } from '@/app/api/assets/route';
 
 describe('Projects API', () => {
