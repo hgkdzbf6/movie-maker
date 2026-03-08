@@ -9,8 +9,12 @@ import fs from 'fs';
 import { randomUUID } from 'crypto';
 
 // 数据库路径
-const DB_DIR = path.join(process.cwd(), 'data');
-const DB_PATH = path.join(DB_DIR, 'remotion.db');
+const isTestEnv = process.env.NODE_ENV === 'test';
+const defaultDbDir = isTestEnv ? path.join(process.cwd(), '.test-data') : path.join(process.cwd(), 'data');
+const defaultDbPath = path.join(defaultDbDir, isTestEnv ? 'test.db' : 'remotion.db');
+const configuredDbPath = process.env.DATABASE_PATH;
+const DB_PATH = configuredDbPath ? path.resolve(configuredDbPath) : defaultDbPath;
+const DB_DIR = path.dirname(DB_PATH);
 
 // 确保数据目录存在
 if (!fs.existsSync(DB_DIR)) {

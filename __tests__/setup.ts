@@ -4,6 +4,10 @@
  */
 
 import '@testing-library/jest-dom';
+import fs from 'fs';
+import path from 'path';
+
+const TEST_DB_PATH = path.join(process.cwd(), '.test-data', 'test.db');
 
 // 模拟 window.matchMedia
 if (typeof window !== 'undefined') {
@@ -104,10 +108,11 @@ beforeEach(async () => {
 
   if (shouldCleanup) {
     try {
-      const { db } = await import('@/lib/db');
-      db.exec('DELETE FROM keyframes; DELETE FROM exports; DELETE FROM assets; DELETE FROM scenes; DELETE FROM projects; DELETE FROM users;');
+      if (fs.existsSync(TEST_DB_PATH)) {
+        fs.unlinkSync(TEST_DB_PATH);
+      }
     } catch {
-      // ignore cleanup errors for tests that do not use DB
+      // ignore cleanup errors before test DB is created
     }
   }
 

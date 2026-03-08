@@ -12,6 +12,11 @@ import fs from 'fs';
 const TEMP_DB_PATH = path.join(process.cwd(), '.test-data', 'test.db');
 
 describe('Database Tests', () => {
+  it('应该使用独立的测试数据库', () => {
+    expect(db.name).toContain(path.join('.test-data', 'test.db'));
+    expect(db.name).not.toContain(path.join('data', 'remotion.db'));
+  });
+
   beforeEach(async () => {
     // 创建测试数据库目录
     const testDir = path.dirname(TEMP_DB_PATH);
