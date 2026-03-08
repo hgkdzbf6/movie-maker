@@ -81,44 +81,30 @@ export default function EditorPage() {
     setDraggedAsset(null);
   };
 
-  const handleTimelineDrop = (e: React.DragEvent) => {
-    e.preventDefault();
+  const handleTimelineDrop = (frame: number, trackType: 'video' | 'audio' | 'text', e: React.DragEvent<HTMLDivElement>) => {
     const assetData = e.dataTransfer.getData('asset');
     if (!assetData || !draggedAsset) return;
 
     try {
       const asset = JSON.parse(assetData);
+      const sceneType = asset.type === 'audio' ? 'audio' : (asset.type === 'image' ? 'image' : 'video');
+      const isInvalidTrack = (sceneType === 'audio' && trackType !== 'audio') || (sceneType !== 'audio' && trackType === 'audio');
+
+      if (isInvalidTrack) {
+        return;
+      }
+
       const newScene: any = {
         id: `scene-${Date.now()}`,
         name: asset.name,
-        type: asset.type === 'audio' ? 'transition' : (asset.type === 'image' ? 'image' : 'video'),
-        startFrame: currentFrame,
+        type: sceneType,
+        startFrame: frame,
         durationFrames: asset.duration ? Math.round(asset.duration * fps) : 90,
         content: {
           assetId: asset.id,
         },
       };
 
-      // 添加到正确的轨道
-      if (asset.type === 'audio') {
-        const audioTrack = useEditorStore.getState().tracks.find(t => t.type === 'audio');
-        if (audioTrack) {
-          useEditorStore.getState().addTrack({
-            ...audioTrack,
-            scenes: [...audioTrack.scenes, newScene],
-          } as any);
-        }
-      } else {
-        const videoTrack = useEditorStore.getState().tracks.find(t => t.type === 'video');
-        if (videoTrack) {
-          useEditorStore.getState().addTrack({
-            ...videoTrack,
-            scenes: [...videoTrack.scenes, newScene],
-          } as any);
-        }
-      }
-
-      // 添加到全局 scenes 列表
       useEditorStore.getState().addScene(newScene);
       selectScene(newScene.id);
     } catch (error) {
@@ -616,16 +602,11 @@ export default function EditorPage() {
 
       {/* 底部时间轴 */}
       <div
-        className="h-40 flex-shrink-0 border-t border-gray-800 bg-gray-900 flex flex-col"
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = isDraggingAsset ? 'copy' : 'move';
-        }}
-        onDrop={handleTimelineDrop}
+        className="relative h-40 flex-shrink-0 border-t border-gray-800 bg-gray-900 flex flex-col"
       >
         {/* 拖拽指示器 */}
         {isDraggingAsset && (
-          <div className="absolute top-0 left-0 right-0 bottom-0 bg-blue-500/10 border-2 border-dashed border-blue-500 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-blue-500/10 border-2 border-dashed border-blue-500 z-50 flex items-center justify-center pointer-events-none">
             <span className="text-sm text-blue-300 font-medium">
               松开以添加到时间轴
             </span>
@@ -634,7 +615,13 @@ export default function EditorPage() {
 
         {/* 轨道区 */}
         <div className="flex-1 overflow-hidden">
-          <Timeline fps={fps} />
+          <Timeline
+            fps={fps}
+            isAssetDragging={isDraggingAsset}
+            draggedAssetType={draggedAsset?.type ?? null}
+            draggedAssetDuration={draggedAsset?.duration}
+            onAssetDrop={handleTimelineDrop}
+          />
         </div>
       </div>
 

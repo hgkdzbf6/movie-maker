@@ -669,7 +669,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ scene }) => {
           )}
 
           {/* 素材 ID */}
-          {(localScene?.type === 'video' || localScene?.type === 'image') && (
+          {(localScene?.type === 'video' || localScene?.type === 'image' || localScene?.type === 'audio') && (
             <div>
               <label className="block text-xs text-gray-400 mb-1.5">
                 素材 ID

@@ -11,7 +11,7 @@ export interface DraggableScene {
 export interface Scene {
   id: string;
   name: string;
-  type: 'video' | 'image' | 'text' | 'transition';
+  type: 'video' | 'image' | 'text' | 'transition' | 'audio';
   startFrame: number;
   durationFrames: number;
   content?: {
@@ -225,14 +225,18 @@ export const useEditorStore = create<EditorState>()(
 
       setProject: (project) => set({ project }),
 
-      addScene: (scene) => set((state) => ({
-        scenes: [...state.scenes, scene],
-        tracks: state.tracks.map(track =>
-          track.id === 'track-1' && track.type === 'video'
-            ? { ...track, scenes: [...track.scenes, scene] }
-            : track
-        ),
-      })),
+      addScene: (scene) => set((state) => {
+        const targetTrackType = scene.type === 'audio' ? 'audio' : scene.type === 'text' ? 'text' : 'video';
+
+        return {
+          scenes: [...state.scenes, scene],
+          tracks: state.tracks.map(track =>
+            track.type === targetTrackType
+              ? { ...track, scenes: [...track.scenes, scene] }
+              : track
+          ),
+        };
+      }),
 
       updateScene: (id, updates) => set((state) => ({
         scenes: state.scenes.map(scene =>
@@ -301,11 +305,12 @@ export const useEditorStore = create<EditorState>()(
 
         return {
           scenes: [...state.scenes, newScene],
-          tracks: state.tracks.map(track =>
-            track.id === 'track-1' && track.type === 'video'
+          tracks: state.tracks.map(track => {
+            const targetTrackType = newScene.type === 'audio' ? 'audio' : newScene.type === 'text' ? 'text' : 'video';
+            return track.type === targetTrackType
               ? { ...track, scenes: [...track.scenes, newScene] }
-              : track
-          ),
+              : track;
+          }),
         };
       }),
 

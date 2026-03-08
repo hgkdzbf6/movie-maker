@@ -2,13 +2,24 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useEditorStore } from '@/store/editor';
+import type { Track } from '@/store/editor';
 import { Plus, Scissors, Clock, Layers, Eye, EyeOff, Lock, Unlock } from 'lucide-react';
 
 interface TimelineProps {
   fps: number;
+  isAssetDragging?: boolean;
+  draggedAssetType?: 'video' | 'image' | 'audio' | null;
+  draggedAssetDuration?: number;
+  onAssetDrop?: (frame: number, trackType: Track['type'], event: React.DragEvent<HTMLDivElement>) => void;
 }
 
-export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
+export const Timeline: React.FC<TimelineProps> = ({
+  fps,
+  isAssetDragging = false,
+  draggedAssetType = null,
+  draggedAssetDuration,
+  onAssetDrop,
+}) => {
   const {
     scenes,
     selectedSceneId,
@@ -46,6 +57,7 @@ export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
   const [resizingSceneId, setResizingSceneId] = useState<string | null>(null);
   const [resizingStartFrame, setResizingStartFrame] = useState(0);
   const [resizingDuration, setResizingDuration] = useState(0);
+  const [dropPreview, setDropPreview] = useState<{ frame: number; trackId: string } | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
   // 计算总帧数
@@ -58,23 +70,15 @@ export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
   // 计算时间轴宽度
   const timelineWidth = totalFrames * pixelsPerFrame;
 
-  // 处理时间轴点击
-  const handleTimelineClick = (e: React.MouseEvent) => {
-    if (!timelineRef.current) return;
-
-    const rect = timelineRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const frame = Math.floor(x / pixelsPerFrame);
-
-    // 应用吸附
+  const getSnappedFrame = (frame: number) => {
     let finalFrame = frame;
+
     if (snapEnabled) {
       if (snapType === 'frame') {
         finalFrame = Math.round(frame);
       } else if (snapType === 'second') {
         finalFrame = Math.round(frame / fps) * fps;
-      } else if (snapType === 'keyframe') {
-        // 找到最近的关键帧
+      } else if (snapType === 'keyframe' && keyframes.length > 0) {
         const nearestKeyframe = keyframes.reduce((nearest, kf) => {
           const nearestDiff = Math.abs(nearest.frame - frame);
           const kfDiff = Math.abs(kf.frame - frame);
@@ -87,7 +91,24 @@ export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
       }
     }
 
-    setCurrentFrame(Math.max(0, Math.min(finalFrame, totalFrames)));
+    return Math.max(0, Math.min(finalFrame, totalFrames));
+  };
+
+  useEffect(() => {
+    if (!isAssetDragging) {
+      setDropPreview(null);
+    }
+  }, [isAssetDragging]);
+
+  // 处理时间轴点击
+  const handleTimelineClick = (e: React.MouseEvent) => {
+    if (!timelineRef.current) return;
+
+    const rect = timelineRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const frame = Math.floor(x / pixelsPerFrame);
+
+    setCurrentFrame(getSnappedFrame(frame));
   };
 
   // 处理场景拖拽开始
@@ -257,6 +278,7 @@ export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
 
   // 获取当前场景
   const currentScene = scenes.find(s => currentFrame >= s.startFrame && currentFrame < s.startFrame + s.durationFrames);
+  const previewDurationFrames = Math.max(30, Math.round((draggedAssetDuration || 3) * fps));
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -371,22 +393,87 @@ export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
               <div
                 className={`h-16 relative border-l-2 bg-gray-800/50 ${
                   selectedTrackId === track.id ? 'border-blue-500' : 'border-transparent'
-                } ${!track.visible ? 'opacity-30' : ''}`}
+                } ${!track.visible ? 'opacity-30' : ''} ${dropPreview?.trackId === track.id ? 'bg-blue-500/10' : ''}`}
                 onClick={(e) => {
                   if (e.currentTarget === e.target) {
                     selectTrack(track.id);
                     handleTimelineClick(e);
                   }
                 }}
+                onDragOver={(e) => {
+                  if (!isAssetDragging) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'copy';
+
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const scrollLeft = timelineRef.current?.scrollLeft ?? 0;
+                  const x = e.clientX - rect.left + scrollLeft;
+                  const frame = getSnappedFrame(Math.round(x / pixelsPerFrame));
+
+                  setDropPreview({ frame, trackId: track.id });
+                }}
+                onDragLeave={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                    return;
+                  }
+                  setDropPreview((current) => (current?.trackId === track.id ? null : current));
+                }}
+                onDrop={(e) => {
+                  if (!onAssetDrop) return;
+
+                  e.preventDefault();
+                  e.stopPropagation();
+
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const scrollLeft = timelineRef.current?.scrollLeft ?? 0;
+                  const x = e.clientX - rect.left + scrollLeft;
+                  const frame = getSnappedFrame(Math.round(x / pixelsPerFrame));
+
+                  setDropPreview(null);
+                  onAssetDrop(frame, track.type, e);
+                }}
               >
+                {dropPreview?.trackId === track.id && (
+                  <>
+                    <div
+                      className="absolute top-0 bottom-0 w-px bg-cyan-300/90 pointer-events-none z-20"
+                      style={{ left: `${dropPreview.frame * pixelsPerFrame}px` }}
+                    />
+                    <div
+                      className="absolute top-1 -translate-x-1/2 rounded-md border border-cyan-400/50 bg-cyan-500/15 px-2 py-0.5 text-[10px] font-mono text-cyan-200 pointer-events-none z-20"
+                      style={{ left: `${dropPreview.frame * pixelsPerFrame}px` }}
+                    >
+                      {Math.floor(dropPreview.frame / fps)}s · F{dropPreview.frame}
+                    </div>
+                    {((draggedAssetType === 'audio' && track.type === 'audio') ||
+                      (draggedAssetType !== 'audio' && track.type !== 'audio')) && (
+                      <div
+                        className={`absolute top-2 h-12 rounded-lg border border-dashed pointer-events-none z-10 ${
+                          track.type === 'audio'
+                            ? 'border-emerald-400/70 bg-emerald-500/15'
+                            : 'border-blue-400/60 bg-blue-500/10'
+                        }`}
+                        style={{
+                          left: `${dropPreview.frame * pixelsPerFrame}px`,
+                          width: `${previewDurationFrames * pixelsPerFrame}px`,
+                        }}
+                      />
+                    )}
+                  </>
+                )}
+
                 {/* 场景 */}
                 {track.scenes.map((scene) => (
                   <div
                     key={scene.id}
-                    className={`absolute top-2 h-12 rounded transition-all flex items-center justify-center border-2 ${
-                      selectedSceneId === scene.id
-                        ? 'border-blue-500 bg-blue-900/30 z-10'
-                        : 'border-gray-700 bg-gray-700/50 hover:border-gray-600'
+                    className={`absolute top-2 h-12 rounded transition-all flex items-center overflow-hidden border-2 ${
+                      scene.type === 'audio'
+                        ? selectedSceneId === scene.id
+                          ? 'border-emerald-400 bg-emerald-500/25 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] z-10'
+                          : 'border-emerald-700/80 bg-emerald-500/15 hover:border-emerald-500/80'
+                        : selectedSceneId === scene.id
+                          ? 'border-blue-500 bg-blue-900/30 z-10'
+                          : 'border-gray-700 bg-gray-700/50 hover:border-gray-600'
                     } ${isDragging && draggedScene?.id === scene.id ? 'opacity-50' : ''} ${track.locked ? 'opacity-50 cursor-not-allowed' : 'cursor-move'}`}
                     style={{
                       left: `${scene.startFrame * pixelsPerFrame}px`,
@@ -425,9 +512,26 @@ export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
                       />
                     )}
 
-                    <span className="text-xs text-gray-300 truncate px-2 pointer-events-none">
-                      {scene.name}
-                    </span>
+                    {scene.type === 'audio' && (
+                      <div className="absolute inset-0 flex items-center gap-0.5 px-2 pointer-events-none opacity-70">
+                        {Array.from({ length: Math.max(8, Math.min(36, Math.floor(scene.durationFrames / 6))) }).map((_, index) => (
+                          <span
+                            key={`${scene.id}-wave-${index}`}
+                            className="w-1 rounded-full bg-emerald-200/70"
+                            style={{
+                              height: `${25 + ((index * 7) % 55)}%`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="relative z-10 flex w-full items-center gap-2 px-2 pointer-events-none">
+                      {scene.type === 'audio' && <span className="text-xs">🎵</span>}
+                      <span className={`text-xs truncate ${scene.type === 'audio' ? 'text-emerald-50 font-medium' : 'text-gray-300'}`}>
+                        {scene.name}
+                      </span>
+                    </div>
 
                     {/* 场景操作按钮 */}
                     <div className="absolute top-1 right-1 flex gap-1 opacity-0 hover:opacity-100 transition-opacity">
