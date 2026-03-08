@@ -403,8 +403,8 @@ describe('Database Tests', () => {
 
       const scenes = Scene.reorder(projectId, 0, 1);
 
-      expect(scenes[0].startFrame).toBe(90);
-      expect(scenes[1].startFrame).toBe(0);
+      expect(scenes[0].startFrame).toBe(0);
+      expect(scenes[1].startFrame).toBe(90);
     });
 
     it('应该拒绝无效的重新排序索引', () => {

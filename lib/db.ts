@@ -6,6 +6,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 
 // 数据库路径
 const DB_DIR = path.join(process.cwd(), 'data');
@@ -118,7 +119,7 @@ const now = () => new Date().toISOString();
 
 export const User = {
   create: (data: { email: string; password: string; name: string }) => {
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     const user = {
       id,
       email: data.email,
@@ -189,7 +190,7 @@ export const Project = {
     description?: string;
     config: any;
   }) => {
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     const project = {
       id,
       user_id: data.userId,
@@ -344,7 +345,7 @@ export const Scene = {
     durationFrames: number;
     content: any;
   }) => {
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     const scene = {
       id,
       project_id: data.projectId,
@@ -465,11 +466,14 @@ export const Scene = {
     // 更新 start_frame
     let currentFrame = 0;
     for (const scene of scenes) {
+      const durationFrames = scene.duration_frames ?? scene.durationFrames ?? 0;
       scene.startFrame = currentFrame;
-      currentFrame += scene.durationFrames;
+      scene.durationFrames = durationFrames;
+      currentFrame += durationFrames;
+
       Scene.update(scene.id, {
         startFrame: scene.startFrame,
-        durationFrames: scene.durationFrames,
+        durationFrames,
       });
     }
 
@@ -492,7 +496,7 @@ export const Asset = {
     height?: number;
     thumbnail?: string;
   }) => {
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     const asset = {
       id,
       project_id: data.projectId || null,
@@ -532,7 +536,7 @@ export const Asset = {
   findByProjectId: (projectId: string, page = 1, limit = 10) => {
     return db.prepare(`
       SELECT * FROM assets WHERE project_id = ?
-      ORDER BY created_at DESC
+      ORDER BY created_at ASC
       LIMIT ? OFFSET ?
     `).all(projectId, limit, (page - 1) * limit) as any[];
   },
@@ -599,7 +603,7 @@ export const Export = {
     filename: string;
     outputPath: string;
   }) => {
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     const exportData = {
       id,
       project_id: data.projectId,
@@ -631,7 +635,12 @@ export const Export = {
       exportData.updated_at
     );
 
-    return exportData;
+    return {
+      ...exportData,
+      outputPath: exportData.output_path,
+      createdAt: exportData.created_at,
+      updatedAt: exportData.updated_at,
+    };
   },
 
   findById: (id: string) => {
@@ -645,7 +654,7 @@ export const Export = {
     `).all(projectId) as any[];
   },
 
-  findByStatus: (status: 'pending' | 'processing' | 'completed' | 'failed') => {
+  findByStatus: (status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled') => {
     return db.prepare(`
       SELECT * FROM exports WHERE status = ?
       ORDER BY created_at ASC
@@ -653,9 +662,10 @@ export const Export = {
   },
 
   update: (id: string, data: Partial<{
-    status: 'pending' | 'processing' | 'completed' | 'failed';
+    status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
     progress: number;
     error: string;
+    outputPath: string;
   }>) => {
     const updates: string[] = [];
     const values: any[] = [];
@@ -671,6 +681,10 @@ export const Export = {
     if (data.error !== undefined) {
       updates.push('error = ?');
       values.push(data.error);
+    }
+    if (data.outputPath !== undefined) {
+      updates.push('output_path = ?');
+      values.push(data.outputPath);
     }
 
     if (updates.length === 0) {
@@ -704,7 +718,7 @@ export const Keyframe = {
     properties: any;
     interpolation: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'step';
   }) => {
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     const keyframe = {
       id,
       scene_id: data.sceneId,

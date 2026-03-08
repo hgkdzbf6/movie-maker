@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 0.0.0.0",
-    "build": "next build",
-    "start": "next start",
+    "dev": "node -r ./scripts/next-wasm-preload.js ./node_modules/next/dist/bin/next dev -H 0.0.0.0",
+    "dev:all": "bash ./scripts/dev-all.sh",
+    "build": "node -r ./scripts/next-wasm-preload.js ./node_modules/next/dist/bin/next build",
+    "start": "node -r ./scripts/next-wasm-preload.js ./node_modules/next/dist/bin/next start",
     "lint": "next lint",
     "scheduler": "ts-node --esm tasks/scheduler.ts",
     "scheduler:watch": "nodemon --watch tasks/scheduler.ts --exec \"ts-node --esm tasks/scheduler.ts\"",
@@ -17,6 +18,8 @@
     "test:e2e": "jest __tests__/e2e"
   },
   "dependencies": {
+    "@next/swc-darwin-arm64": "^14.2.18",
+    "@next/swc-wasm-nodejs": "^14.2.18",
     "@remotion/bundler": "4.0.434",
     "@remotion/cli": "4.0.434",
     "@remotion/gif": "4.0.434",
@@ -54,6 +57,7 @@
     "postcss": "^8.4.49",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "undici": "^7.22.0"
   }
 }

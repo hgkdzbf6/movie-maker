@@ -3,6 +3,9 @@ const path = require('path');
 
 const nextConfig = {
   reactStrictMode: true,
+  experimental: {
+    useWasmBinary: true,
+  },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,

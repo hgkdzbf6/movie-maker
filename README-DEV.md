@@ -31,6 +31,14 @@ npm run dev
 
 访问 http://localhost:3000
 
+### 一键启动前端 + 后端调度器
+
+```bash
+npm run dev:all
+```
+
+该命令会同时启动 Next.js 前端（含 API）和 `tasks/scheduler.ts` 监控进程。
+
 ---
 
 ## ⏰ 定时任务系统

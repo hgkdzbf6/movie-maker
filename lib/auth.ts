@@ -14,7 +14,11 @@ interface TokenPayload {
   id: string;
   email: string;
   name: string;
+  iat?: number;
+  exp?: number;
 }
+
+const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 // 注册用户
 export async function register(data: {
@@ -22,6 +26,14 @@ export async function register(data: {
   password: string;
   name: string;
 }) {
+  if (!data.email || !data.password || !data.name) {
+    throw new Error('必填字段缺失');
+  }
+
+  if (!isValidEmail(data.email)) {
+    throw new Error('邮箱格式不正确');
+  }
+
   // 检查邮箱是否已存在
   const existingUser = User.findByEmail(data.email);
   if (existingUser) {
@@ -43,6 +55,10 @@ export async function register(data: {
 
 // 登录用户
 export async function login(email: string, password: string) {
+  if (!email || !password) {
+    throw new Error('邮箱和密码不能为空');
+  }
+
   // 查找用户
   const user = User.findByEmail(email);
   if (!user) {

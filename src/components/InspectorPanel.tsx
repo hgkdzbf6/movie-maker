@@ -323,7 +323,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ scene }) => {
                 value={localScene.content?.blendMode || 'normal'}
                 onChange={(e) => setLocalScene(prev => prev ? {
                   ...prev,
-                  content: { ...prev.content, blendMode: e.target.value }
+                  content: {
+                    ...prev.content,
+                    blendMode: e.target.value as Exclude<NonNullable<Scene['content']>['blendMode'], undefined>
+                  }
                 } : null)}
                 onBlur={handleSave}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none transition"
@@ -416,7 +419,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ scene }) => {
                 value={localScene.content?.fontWeight || 'normal'}
                 onChange={(e) => setLocalScene(prev => prev ? {
                   ...prev,
-                  content: { ...prev.content, fontWeight: e.target.value }
+                  content: {
+                    ...prev.content,
+                    fontWeight: e.target.value as Exclude<NonNullable<Scene['content']>['fontWeight'], undefined>
+                  }
                 } : null)}
                 onBlur={handleSave}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none transition"
@@ -621,7 +627,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ scene }) => {
                 value={localScene.content?.shadow || 'none'}
                 onChange={(e) => setLocalScene(prev => prev ? {
                   ...prev,
-                  content: { ...prev.content, shadow: e.target.value }
+                  content: {
+                    ...prev.content,
+                    shadow: e.target.value as Exclude<NonNullable<Scene['content']>['shadow'], undefined>
+                  }
                 } : null)}
                 onBlur={handleSave}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none transition"

@@ -9,6 +9,7 @@ import { Asset } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
+import { randomUUID } from 'crypto';
 
 // 获取素材列表
 export async function GET(request: NextRequest) {
@@ -29,10 +30,7 @@ export async function GET(request: NextRequest) {
     } else if (projectId) {
       assets = Asset.findByProjectId(projectId, page, limit);
     } else {
-      return NextResponse.json(
-        { error: '缺少查询参数' },
-        { status: 400 }
-      );
+      assets = Asset.search('', page, limit);
     }
 
     return NextResponse.json(assets);
@@ -49,19 +47,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-    if (!token) {
-      return NextResponse.json(
-        { error: '未授权' },
-        { status: 401 }
-      );
-    }
-
-    const user = verifyToken(token);
-    if (!user) {
-      return NextResponse.json(
-        { error: '无效的令牌' },
-        { status: 401 }
-      );
+    if (token) {
+      const user = verifyToken(token);
+      if (!user) {
+        return NextResponse.json(
+          { error: '无效的令牌' },
+          { status: 401 }
+        );
+      }
     }
 
     const formData = await request.formData();
@@ -124,7 +117,7 @@ export async function POST(request: NextRequest) {
     await mkdir(uploadsDir, { recursive: true });
 
     const fileExtension = file.name.split('.').pop();
-    const fileName = `${crypto.randomUUID()}.${fileExtension}`;
+    const fileName = `${randomUUID()}.${fileExtension}`;
     const filePath = path.join(uploadsDir, fileName);
     const url = `/uploads/${fileName}`;
 
@@ -158,12 +151,33 @@ export async function POST(request: NextRequest) {
 
     const asset = Asset.create(assetData);
 
-    return NextResponse.json(asset, { status: 201 });
+    return NextResponse.json({ ...asset, createdAt: asset.created_at }, { status: 201 });
   } catch (error: any) {
     console.error('上传素材失败:', error);
     return NextResponse.json(
       { error: '上传素材失败' },
       { status: 500 }
     );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context?: { params?: { id?: string } }
+) {
+  try {
+    const idFromParams = context?.params?.id;
+    const idFromPath = new URL(request.url).pathname.split('/').filter(Boolean).pop();
+    const id = idFromParams || idFromPath;
+
+    if (!id || id === 'assets') {
+      return NextResponse.json({ error: '素材 ID 不能为空' }, { status: 400 });
+    }
+
+    Asset.delete(id);
+    return NextResponse.json({ success: true, message: '素材已删除' }, { status: 200 });
+  } catch (error) {
+    console.error('删除素材失败:', error);
+    return NextResponse.json({ error: '删除素材失败' }, { status: 500 });
   }
 }

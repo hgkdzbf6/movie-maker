@@ -121,6 +121,12 @@ describe('Auth Tests', () => {
     let invalidToken: string;
 
     beforeEach(async () => {
+      await register({
+        email: 'test@example.com',
+        password: 'password123',
+        name: '测试用户',
+      });
+
       const result = await login('test@example.com', 'password123');
       validToken = result.token;
       invalidToken = 'invalid.token.here';
@@ -154,6 +160,12 @@ describe('Auth Tests', () => {
     let validToken: string;
 
     beforeEach(async () => {
+      await register({
+        email: 'test@example.com',
+        password: 'password123',
+        name: '测试用户',
+      });
+
       const result = await login('test@example.com', 'password123');
       validToken = result.token;
     });
@@ -250,6 +262,12 @@ describe('Auth Tests', () => {
     });
 
     it('应该限制令牌长度', async () => {
+      await register({
+        email: 'test@example.com',
+        password: 'password123',
+        name: '测试用户',
+      });
+
       const result = await login('test@example.com', 'password123');
 
       // JWT 令牌通常在 200-500 字符之间

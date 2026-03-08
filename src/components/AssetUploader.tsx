@@ -10,6 +10,9 @@ export interface AssetFile {
   url: string;
   size: number;
   duration?: number;
+  width?: number;
+  height?: number;
+  thumbnail?: string;
 }
 
 interface AssetUploaderProps {

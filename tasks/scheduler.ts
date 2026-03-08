@@ -18,7 +18,7 @@
 import { exec } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,7 +42,7 @@ async function ensureDirectories() {
 }
 
 // 任务接口
-interface ScheduledTask {
+export interface ScheduledTask {
   id: string;
   name: string;
   interval: 'hourly' | 'daily' | 'weekly';
@@ -258,6 +258,5 @@ if (import.meta.url === pathToFileURL(process.argv[1])) {
 export {
   main,
   executeAllTasks,
-  scheduledTasks,
-  ScheduledTask
+  scheduledTasks
 };

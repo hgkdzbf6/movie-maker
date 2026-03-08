@@ -250,7 +250,7 @@ export const useEditorStore = create<EditorState>()(
         // 应用吸附
         let finalStartFrame = newStartFrame;
         if (state.snapEnabled && state.snapType !== 'none') {
-          if (state.snapType === 'frame' || state.snapType === 'second') {
+          if (state.snapType === 'frame') {
             finalStartFrame = Math.round(newStartFrame);
           } else if (state.snapType === 'second') {
             finalStartFrame = Math.round(newStartFrame / state.fps) * state.fps;

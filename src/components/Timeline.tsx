@@ -14,6 +14,8 @@ export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
     selectedSceneId,
     currentFrame,
     setCurrentFrame,
+    updateScene,
+    selectScene,
     draggedScene,
     setDraggedScene,
     updateScenePosition,
@@ -34,7 +36,6 @@ export const Timeline: React.FC<TimelineProps> = ({ fps }) => {
     selectKeyframe,
     addKeyframe,
     deleteKeyframe,
-    reorderScenes,
   } = useEditorStore();
 
   const [isDragging, setIsDragging] = useState(false);

@@ -6,19 +6,21 @@
 import '@testing-library/jest-dom';
 
 // 模拟 window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: (query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => {},
-  }),
-});
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => {},
+    }),
+  });
+}
 
 // 模拟 IntersectionObserver
 global.IntersectionObserver = class IntersectionObserver {
@@ -39,7 +41,7 @@ global.ResizeObserver = class ResizeObserver {
 } as any;
 
 // 全局测试工具
-global.testUtils = {
+;(global as any).testUtils = {
   // 等待异步操作
   waitFor: (ms: number) => new Promise(resolve => setTimeout(resolve, ms)),
   
@@ -50,7 +52,7 @@ global.testUtils = {
   randomInt: (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min,
   
   // 创建模拟的场景
-  createMockScene = (overrides: any = {}) => ({
+  createMockScene: (overrides: any = {}) => ({
     id: `scene-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     name: '测试场景',
     type: 'video' as const,
@@ -61,7 +63,7 @@ global.testUtils = {
   }),
   
   // 创建模拟的素材
-  createMockAsset = (overrides: any = {}) => ({
+  createMockAsset: (overrides: any = {}) => ({
     id: `asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     name: '测试素材',
     type: 'video' as const,
@@ -75,7 +77,7 @@ global.testUtils = {
   }),
   
   // 创建模拟的项目
-  createMockProject = (overrides: any = {}) => ({
+  createMockProject: (overrides: any = {}) => ({
     id: `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     name: '测试项目',
     thumbnail: 'https://example.com/thumbnail.jpg',
@@ -94,12 +96,27 @@ global.testUtils = {
 };
 
 // 每个测试文件前运行
-beforeEach(() => {
-  // 清除 localStorage
-  localStorage.clear();
-  
-  // 清除 sessionStorage
-  sessionStorage.clear();
+beforeEach(async () => {
+  const testPath = expect.getState().testPath || '';
+  const shouldCleanup =
+    testPath.includes('/__tests__/unit/') ||
+    (testPath.includes('/__tests__/integration/') && !testPath.endsWith('mp4-export.test.ts'));
+
+  if (shouldCleanup) {
+    try {
+      const { db } = await import('@/lib/db');
+      db.exec('DELETE FROM keyframes; DELETE FROM exports; DELETE FROM assets; DELETE FROM scenes; DELETE FROM projects; DELETE FROM users;');
+    } catch {
+      // ignore cleanup errors for tests that do not use DB
+    }
+  }
+
+  if (typeof localStorage !== 'undefined') {
+    localStorage.clear();
+  }
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.clear();
+  }
   
   // 重置 console
   jest.spyOn(console, 'error').mockImplementation(() => {});

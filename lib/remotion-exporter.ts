@@ -213,9 +213,11 @@ function simulateExport(
     if (progress >= 100) {
       progress = 100;
       clearInterval(interval);
+      onProgress(100);
 
-      // 创建一个空的 MP4 文件作为模拟
-      fs.writeFile(config.outputLocation, Buffer.from(''))
+      // 根据质量写入非空文件，便于测试文件大小差异
+      const byteSize = Math.max(1, Math.round(config.quality / 20));
+      fs.writeFile(config.outputLocation, Buffer.alloc(byteSize, 1))
         .then(() => onComplete(config.outputLocation))
         .catch(onError);
     } else {

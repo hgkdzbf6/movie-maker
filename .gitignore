@@ -47,25 +47,31 @@ temp/
 *.tmp
 
 # Projects directory（用户项目文件）
-projects/
+/projects/
 
 # 其他项目和工作区（不提交到这个仓库）
-openclaw-zero-token/
-situation-monitor/
-xiaohongshu-mcp/
-cftunnel/
-RSSHub/
-node_modules/
-remotion-project/
-remotion/
-archive/
-scripts/
-executor/
-skills/
-knowledge/
-learning/
-test/
-tetris/
-thinker/
-venv-browser-use/
-browser-use-output/
+/openclaw-zero-token/
+/situation-monitor/
+/xiaohongshu-mcp/
+/cftunnel/
+/RSSHub/
+/node_modules/
+/remotion-project/
+/remotion/
+/archive/
+/scripts/*
+!/scripts/dev-all.sh
+!/scripts/next-wasm-preload.js
+/executor/
+/skills/
+/knowledge/
+/learning/
+/test/
+/tetris/
+/thinker/
+/venv-browser-use/
+/browser-use-output/
+
+# Local temporary artifacts
+/.tmp-swc-check/
+/public/uploads/
