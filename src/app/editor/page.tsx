@@ -1,10 +1,10 @@
 'use client';
 
-import { Player } from '@remotion/player';
+import { Player, type PlayerRef } from '@remotion/player';
 import { VideoComposition } from '@/remotion/VideoComposition';
 import { useEditorStore } from '@/store/editor';
-import { Play, Pause, Download, Settings, Maximize2, Save, Undo, Redo, ChevronRight, Layers, Scissors, Plus, X } from 'lucide-react';
-import { useState } from 'react';
+import { Play, Pause, Download, Settings, Maximize2, Save, Undo, Redo, ChevronRight, Layers, Scissors, Plus, X, Upload, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { AssetUploader, AssetFile } from '@/components/AssetUploader';
 import { AssetList } from '@/components/AssetList';
 import { Timeline } from '@/components/Timeline';
@@ -13,7 +13,6 @@ import { InspectorPanel } from '@/components/InspectorPanel';
 export default function EditorPage() {
   const {
     isPlaying,
-    togglePlayback,
     scenes,
     selectedSceneId,
     currentFrame,
@@ -28,6 +27,11 @@ export default function EditorPage() {
     deleteScene,
     duplicateScene,
     splitScene,
+    setIsPlaying,
+    setCurrentFrame,
+    resetEditor,
+    exportProjectFile,
+    loadProjectFile,
   } = useEditorStore();
 
   const [activePanel, setActivePanel] = useState<'timeline' | 'assets' | 'inspector'>('timeline');
@@ -38,6 +42,228 @@ export default function EditorPage() {
   const [draggedAsset, setDraggedAsset] = useState<any>(null);
   const [isReordering, setIsReordering] = useState(false);
   const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
+
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(280);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(320);
+  const [timelineHeight, setTimelineHeight] = useState(160);
+  const resizeStateRef = useRef<null | {
+    side: 'left' | 'right' | 'timeline';
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+  }>(null);
+
+  const playerRef = useRef<PlayerRef>(null);
+  const projectFileInputRef = useRef<HTMLInputElement>(null);
+
+  const totalFrames = Math.max(
+    180,
+    ...scenes.map((scene) => scene.startFrame + scene.durationFrames)
+  );
+  const totalSeconds = Math.floor(totalFrames / fps);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    const onFrameUpdate = (event: { detail: { frame: number } }) => {
+      useEditorStore.getState().setCurrentFrame(event.detail.frame);
+    };
+
+    const onPlay = () => {
+      useEditorStore.getState().setIsPlaying(true);
+    };
+
+    const onPause = () => {
+      useEditorStore.getState().setIsPlaying(false);
+    };
+
+    const onEnded = () => {
+      const state = useEditorStore.getState();
+      state.setIsPlaying(false);
+      const last = Math.max(0, totalFrames - 1);
+      state.setCurrentFrame(last);
+      player.seekTo(last);
+    };
+
+    player.addEventListener('frameupdate', onFrameUpdate);
+    player.addEventListener('play', onPlay);
+    player.addEventListener('pause', onPause);
+    player.addEventListener('ended', onEnded);
+
+    return () => {
+      player.removeEventListener('frameupdate', onFrameUpdate);
+      player.removeEventListener('play', onPlay);
+      player.removeEventListener('pause', onPause);
+      player.removeEventListener('ended', onEnded);
+    };
+  }, [totalFrames]);
+
+  useEffect(() => {
+    if (!playerRef.current) return;
+    if (isPlaying) return;
+    playerRef.current.seekTo(currentFrame);
+  }, [currentFrame, isPlaying]);
+
+  const handlePlayPause = () => {
+    if (!playerRef.current) {
+      setIsPlaying(!isPlaying);
+      return;
+    }
+
+    if (isPlaying) {
+      playerRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      // If we are already at the end, restart from beginning.
+      if (currentFrame >= totalFrames - 1) {
+        setCurrentFrame(0);
+        playerRef.current.seekTo(0);
+      }
+      playerRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  useEffect(() => {
+    try {
+      const left = window.localStorage.getItem('editor:leftSidebarWidth');
+      const right = window.localStorage.getItem('editor:rightSidebarWidth');
+      const timeline = window.localStorage.getItem('editor:timelineHeight');
+      if (left) setLeftSidebarWidth(Math.max(220, Math.min(520, parseInt(left, 10) || 280)));
+      if (right) setRightSidebarWidth(Math.max(260, Math.min(560, parseInt(right, 10) || 320)));
+      if (timeline) setTimelineHeight(Math.max(120, Math.min(420, parseInt(timeline, 10) || 160)));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    const onMouseMove = (event: MouseEvent) => {
+      const state = resizeStateRef.current;
+      if (!state) return;
+
+      if (state.side === 'timeline') {
+        const deltaY = state.startY - event.clientY;
+        const next = Math.max(120, Math.min(420, state.startHeight + deltaY));
+        setTimelineHeight(next);
+        try {
+          window.localStorage.setItem('editor:timelineHeight', String(next));
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      const delta = event.clientX - state.startX;
+      if (state.side === 'left') {
+        const next = Math.max(220, Math.min(520, state.startWidth + delta));
+        setLeftSidebarWidth(next);
+        try {
+          window.localStorage.setItem('editor:leftSidebarWidth', String(next));
+        } catch {
+          // ignore
+        }
+      } else {
+        const next = Math.max(260, Math.min(560, state.startWidth - delta));
+        setRightSidebarWidth(next);
+        try {
+          window.localStorage.setItem('editor:rightSidebarWidth', String(next));
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const onMouseUp = () => {
+      resizeStateRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
+  const startResize = (side: 'left' | 'right' | 'timeline', event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    resizeStateRef.current = {
+      side,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: side === 'left' ? leftSidebarWidth : rightSidebarWidth,
+      startHeight: timelineHeight,
+    };
+
+    document.body.style.cursor = side === 'timeline' ? 'row-resize' : 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleDebugClear = () => {
+    if (!confirm('确定要清空当前工程吗？这会删除所有时间轴片段与素材（仅本地状态）。')) return;
+
+    try {
+      window.localStorage.removeItem('editor-storage');
+      window.localStorage.removeItem('editor:leftSidebarWidth');
+      window.localStorage.removeItem('editor:rightSidebarWidth');
+      window.localStorage.removeItem('editor:timelineHeight');
+    } catch {
+      // ignore
+    }
+
+    resetEditor();
+    setLeftSidebarWidth(280);
+    setRightSidebarWidth(320);
+    setTimelineHeight(160);
+  };
+
+  const handleSaveProjectFile = () => {
+    const file = exportProjectFile();
+    const json = JSON.stringify(file, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `movie-maker-project-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleLoadProjectFileClick = () => {
+    projectFileInputRef.current?.click();
+  };
+
+  const handleLoadProjectFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      if (!parsed || parsed.version !== 1) {
+        alert('工程文件格式不正确或版本不支持');
+        return;
+      }
+
+      loadProjectFile(parsed);
+    } catch (error) {
+      console.error('Failed to load project file:', error);
+      alert('加载工程文件失败，请检查文件内容');
+    }
+  };
 
   const selectedScene = scenes.find(s => s.id === selectedSceneId);
   const selectedAsset = assets.find(a => a.id === selectedAssetId);
@@ -71,7 +297,11 @@ export default function EditorPage() {
 
   const handleAssetDragStart = (asset: any, e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'copy';
-    e.dataTransfer.setData('asset', JSON.stringify(asset));
+    const payload = JSON.stringify(asset);
+    // Prefer a stable MIME-like type; keep legacy keys for compatibility.
+    e.dataTransfer.setData('application/x-movie-maker-asset+json', payload);
+    e.dataTransfer.setData('asset', payload);
+    e.dataTransfer.setData('text/plain', payload);
     setIsDraggingAsset(true);
     setDraggedAsset(asset);
   };
@@ -82,37 +312,54 @@ export default function EditorPage() {
   };
 
   const handleTimelineDrop = (frame: number, trackType: 'video' | 'audio' | 'text', e: React.DragEvent<HTMLDivElement>) => {
-    const assetData = e.dataTransfer.getData('asset');
-    if (!assetData || !draggedAsset) return;
-
     try {
+      const assetData =
+        e.dataTransfer.getData('application/x-movie-maker-asset+json') ||
+        e.dataTransfer.getData('asset') ||
+        e.dataTransfer.getData('text/plain');
+      if (!assetData) return;
+
       const asset = JSON.parse(assetData);
       const sceneType = asset.type === 'audio' ? 'audio' : (asset.type === 'image' ? 'image' : 'video');
-      const isInvalidTrack = (sceneType === 'audio' && trackType !== 'audio') || (sceneType !== 'audio' && trackType === 'audio');
 
-      if (isInvalidTrack) {
-        return;
-      }
+      const durationFrames = asset.duration ? Math.round(asset.duration * fps) : 90;
+      const baseId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
       const newScene: any = {
-        id: `scene-${Date.now()}`,
+        id: `scene-${baseId}`,
         name: asset.name,
         type: sceneType,
         startFrame: frame,
-        durationFrames: asset.duration ? Math.round(asset.duration * fps) : 90,
+        durationFrames,
         content: {
           assetId: asset.id,
         },
       };
 
       useEditorStore.getState().addScene(newScene);
+
+      // If a video is added, also create an audio scene so the video's sound plays.
+      if (asset.type === 'video') {
+        const audioScene: any = {
+          id: `scene-${baseId}-audio`,
+          name: `${asset.name} (音频)`,
+          type: 'audio',
+          startFrame: frame,
+          durationFrames,
+          content: {
+            assetId: asset.id,
+          },
+        };
+        useEditorStore.getState().addScene(audioScene);
+      }
+
       selectScene(newScene.id);
     } catch (error) {
       console.error('Failed to parse asset data:', error);
+    } finally {
+      setIsDraggingAsset(false);
+      setDraggedAsset(null);
     }
-
-    setIsDraggingAsset(false);
-    setDraggedAsset(null);
   };
 
   const handleSceneDragStart = (sceneId: string, index: number, e: React.DragEvent) => {
@@ -138,13 +385,20 @@ export default function EditorPage() {
     setDraggedSceneIndex(null);
   };
 
-  const totalFrames = scenes.reduce((sum, s) => sum + s.durationFrames, 0);
-  const totalSeconds = Math.floor(totalFrames / fps);
-
   return (
-    <div className="h-screen w-screen flex flex-col bg-gray-950 text-gray-100 overflow-hidden">
+    <div className="h-[100dvh] w-[100dvw] flex flex-col bg-gray-950 text-gray-100 overflow-hidden pb-[env(safe-area-inset-bottom)]">
+      <input
+        ref={projectFileInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={handleLoadProjectFileChange}
+      />
       {/* 顶部导航栏 */}
-      <header className="h-14 flex flex-shrink-0 items-center justify-between px-4 border-b border-gray-800 bg-gray-900 gap-4">
+      <header
+        className="h-14 flex flex-shrink-0 items-center justify-between px-4 border-b border-gray-800 bg-gray-900 gap-4"
+        style={{ WebkitAppRegion: 'drag' } as any}
+      >
         {/* 左侧：项目名称 + 保存/撤销 */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
@@ -167,14 +421,36 @@ export default function EditorPage() {
           <div className="h-6 w-px bg-gray-700" />
 
           <div className="flex items-center gap-2">
-            <button className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-gray-800">
+            <button
+              className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-gray-800"
+              style={{ WebkitAppRegion: 'no-drag' } as any}
+              title="保存工程文件"
+              onClick={handleSaveProjectFile}
+            >
               <Save size={18} />
             </button>
-            <button className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-gray-800">
+            <button
+              className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-gray-800"
+              style={{ WebkitAppRegion: 'no-drag' } as any}
+              title="加载工程文件"
+              onClick={handleLoadProjectFileClick}
+            >
+              <Upload size={18} />
+            </button>
+            <button className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-gray-800" style={{ WebkitAppRegion: 'no-drag' } as any}>
               <Undo size={18} />
             </button>
-            <button className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-gray-800">
+            <button className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-gray-800" style={{ WebkitAppRegion: 'no-drag' } as any}>
               <Redo size={18} />
+            </button>
+            <div className="h-6 w-px bg-gray-700" />
+            <button
+              className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-red-900/40 hover:text-red-200"
+              style={{ WebkitAppRegion: 'no-drag' } as any}
+              title="一键清空(调试)"
+              onClick={handleDebugClear}
+            >
+              <Trash2 size={18} />
             </button>
           </div>
         </div>
@@ -193,6 +469,7 @@ export default function EditorPage() {
           <button
             onClick={() => alert('导出功能即将推出')}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white border-none rounded-lg cursor-pointer font-medium text-sm hover:bg-blue-700"
+            style={{ WebkitAppRegion: 'no-drag' } as any}
           >
             <Download size={16} />
             <span>导出</span>
@@ -202,6 +479,7 @@ export default function EditorPage() {
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="p-2.5 bg-gray-800 border-none rounded-lg cursor-pointer text-gray-300 hover:bg-gray-700"
             title="全屏模式"
+            style={{ WebkitAppRegion: 'no-drag' } as any}
           >
             <Maximize2 size={18} />
           </button>
@@ -209,6 +487,7 @@ export default function EditorPage() {
             onClick={() => alert('设置功能即将推出')}
             className="p-2.5 bg-gray-800 border-none rounded-lg cursor-pointer text-gray-300 hover:bg-gray-700"
             title="设置"
+            style={{ WebkitAppRegion: 'no-drag' } as any}
           >
             <Settings size={18} />
           </button>
@@ -221,7 +500,10 @@ export default function EditorPage() {
       {/* 中间主内容区 */}
       <div className="flex-1 flex overflow-hidden flex-row min-h-0">
         {/* 左侧边栏 */}
-        <div className="w-[280px] flex-shrink-0 border-r border-gray-800 flex flex-col bg-gray-900">
+        <div
+          className="flex-shrink-0 border-r border-gray-800 flex flex-col bg-gray-900"
+          style={{ width: `${leftSidebarWidth}px` }}
+        >
           {/* 面板切换标签 */}
           <div className="flex border-b border-gray-800">
             <button
@@ -461,17 +743,23 @@ export default function EditorPage() {
           )}
         </div>
 
+        <div
+          className="w-1 flex-shrink-0 bg-gray-900 hover:bg-blue-500/30 cursor-col-resize"
+          onMouseDown={(e) => startResize('left', e)}
+          title="拖拽调整左侧宽度"
+        />
+
         {/* 中央预览区 */}
         <div className="flex-1 flex flex-col bg-gray-950 min-w-0 min-h-0">
           {/* 播放控制区 */}
           <div className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-gray-800 bg-gray-900">
             <div className="flex items-center gap-4">
               {/* 播放/暂停按钮 */}
-              <button
-                onClick={togglePlayback}
-                className="p-2.5 bg-blue-600 text-white border-none rounded-full cursor-pointer hover:shadow-lg hover:shadow-blue-500/20 transition-all"
-                title={isPlaying ? '暂停 (Space)' : '播放 (Space)'}
-              >
+                <button
+                  onClick={handlePlayPause}
+                  className="p-2.5 bg-blue-600 text-white border-none rounded-full cursor-pointer hover:shadow-lg hover:shadow-blue-500/20 transition-all"
+                  title={isPlaying ? '暂停 (Space)' : '播放 (Space)'}
+                >
                 {isPlaying ? <Pause size={22} /> : <Play size={22} />}
               </button>
 
@@ -528,14 +816,18 @@ export default function EditorPage() {
           <div className="flex-1 flex items-center justify-center bg-black p-6 min-h-0">
             <div className="w-full h-full max-w-[80rem] max-h-[60vh]">
               <Player
+                ref={playerRef}
                 component={VideoComposition}
                 style={{ width: '100%', height: '100%' }}
                 compositionWidth={1920}
                 compositionHeight={1080}
                 durationInFrames={totalFrames || 180}
                 fps={fps}
-                inFrame={currentFrame}
+                initialFrame={currentFrame}
                 controls={false}
+                loop={false}
+                autoPlay={false}
+                moveToBeginningWhenEnded={false}
                 acknowledgeRemotionLicense={true}
               />
             </div>
@@ -576,8 +868,17 @@ export default function EditorPage() {
           )}
         </div>
 
+        <div
+          className="w-1 flex-shrink-0 bg-gray-900 hover:bg-blue-500/30 cursor-col-resize"
+          onMouseDown={(e) => startResize('right', e)}
+          title="拖拽调整右侧宽度"
+        />
+
         {/* 右侧属性面板 */}
-        <div className="w-[320px] flex-shrink-0 border-l border-gray-800 flex flex-col bg-gray-900">
+        <div
+          className="flex-shrink-0 border-l border-gray-800 flex flex-col bg-gray-900"
+          style={{ width: `${rightSidebarWidth}px` }}
+        >
           {/* 属性面板标签 */}
           <div className="flex border-b border-gray-800">
             <button
@@ -601,8 +902,14 @@ export default function EditorPage() {
 
       {/* 底部时间轴 */}
       <div
-        className="relative h-40 flex-shrink-0 border-t border-gray-800 bg-gray-900 flex flex-col"
+        className="relative flex-shrink-0 border-t border-gray-800 bg-gray-900 flex flex-col"
+        style={{ height: `${timelineHeight}px` }}
       >
+        <div
+          className="h-1 w-full flex-shrink-0 bg-gray-900 hover:bg-blue-500/30 cursor-row-resize"
+          onMouseDown={(e) => startResize('timeline', e)}
+          title="拖拽调整时间轴高度"
+        />
         {/* 拖拽指示器 */}
         {isDraggingAsset && (
             <div className="absolute inset-0 bg-blue-500/10 border-2 border-dashed border-blue-500 z-50 flex items-center justify-center pointer-events-none">

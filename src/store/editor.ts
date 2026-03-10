@@ -142,6 +142,7 @@ interface EditorState {
   deleteAsset: (id: string) => void;
   setCurrentFrame: (frame: number) => void;
   togglePlayback: () => void;
+  setIsPlaying: (isPlaying: boolean) => void;
   exportProject: () => void;
   setDraggedScene: (scene: DraggableScene | null) => void;
   updateScenePosition: (sceneId: string, newStartFrame: number) => void;
@@ -168,11 +169,45 @@ interface EditorState {
   deleteKeyframe: (keyframeId: string) => void;
   updateKeyframe: (keyframeId: string, updates: Partial<Keyframe>) => void;
   selectKeyframe: (keyframeId: string | null) => void;
+
+  // Debug / Project file
+  resetEditor: () => void;
+  exportProjectFile: () => EditorProjectFile;
+  loadProjectFile: (file: EditorProjectFile) => void;
 }
+
+export type EditorProjectFile = {
+  version: 1;
+  savedAt: string;
+  fps: number;
+  currentFrame: number;
+  assets: Asset[];
+  tracks: Track[];
+};
+
+const getInitialTracks = (): Track[] => [
+  {
+    id: 'track-1',
+    name: 'Video Track 1',
+    type: 'video',
+    scenes: [],
+    visible: true,
+    locked: false,
+  },
+  {
+    id: 'track-2',
+    name: 'Audio Track 1',
+    type: 'audio',
+    scenes: [],
+    visible: true,
+    locked: false,
+    volume: 1.0,
+  },
+];
 
 export const useEditorStore = create<EditorState>()(
   persist(
-    (set) => ({
+    (set): EditorState => ({
       project: null,
       scenes: [],
       assets: [],
@@ -197,25 +232,7 @@ export const useEditorStore = create<EditorState>()(
       },
 
       // 时间轴状态
-      tracks: [
-        {
-          id: 'track-1',
-          name: 'Video Track 1',
-          type: 'video',
-          scenes: [],
-          visible: true,
-          locked: false,
-        },
-        {
-          id: 'track-2',
-          name: 'Audio Track 1',
-          type: 'audio',
-          scenes: [],
-          visible: true,
-          locked: false,
-          volume: 1.0,
-        },
-      ],
+      tracks: getInitialTracks(),
       selectedTrackId: null,
       timelineZoom: 1.0,
       snapEnabled: true,
@@ -396,6 +413,8 @@ export const useEditorStore = create<EditorState>()(
         isPlaying: !state.isPlaying
       })),
 
+      setIsPlaying: (isPlaying) => set({ isPlaying }),
+
       endSceneDrag: () => set({ draggedScene: null }),
 
       // 素材库操作
@@ -480,6 +499,61 @@ export const useEditorStore = create<EditorState>()(
       })),
 
       selectKeyframe: (keyframeId) => set({ selectedKeyframeId: keyframeId }),
+
+      resetEditor: () => set(() => ({
+        project: null,
+        scenes: [],
+        assets: [],
+        selectedSceneId: null,
+        currentFrame: 0,
+        isPlaying: false,
+        fps: 30,
+        draggedScene: null,
+        assetFilter: 'all',
+        selectedAssetId: null,
+        tracks: getInitialTracks(),
+        selectedTrackId: null,
+        timelineZoom: 1.0,
+        snapEnabled: true,
+        snapType: 'frame',
+        keyframes: [],
+        selectedKeyframeId: null,
+      })),
+
+      exportProjectFile: () => {
+        const state = useEditorStore.getState();
+        return {
+          version: 1,
+          savedAt: new Date().toISOString(),
+          fps: state.fps,
+          currentFrame: state.currentFrame,
+          assets: state.assets,
+          tracks: state.tracks,
+        };
+      },
+
+      loadProjectFile: (file) => set(() => {
+        const tracks = Array.isArray(file.tracks) ? file.tracks : getInitialTracks();
+        const scenes = tracks.flatMap((track) => track.scenes || []);
+        const assets = Array.isArray(file.assets) ? file.assets : [];
+
+        return {
+          project: null,
+          scenes,
+          assets,
+          selectedSceneId: null,
+          currentFrame: Math.max(0, file.currentFrame || 0),
+          isPlaying: false,
+          fps: file.fps || 30,
+          draggedScene: null,
+          assetFilter: 'all',
+          selectedAssetId: null,
+          tracks,
+          selectedTrackId: null,
+          keyframes: [],
+          selectedKeyframeId: null,
+        };
+      }),
     }),
     {
       name: 'editor-storage',

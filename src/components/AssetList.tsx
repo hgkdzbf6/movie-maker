@@ -68,7 +68,6 @@ export const AssetList: React.FC<AssetListProps> = ({
 
   // 处理素材拖拽开始
   const handleDragStart = (asset: Asset, e: React.DragEvent) => {
-    e.preventDefault();
     if (onDragStart) {
       onDragStart(asset, e);
     }
@@ -76,7 +75,6 @@ export const AssetList: React.FC<AssetListProps> = ({
 
   // 处理素材拖拽结束
   const handleDragEnd = (e: React.DragEvent) => {
-    e.preventDefault();
     if (onDragEnd) {
       onDragEnd(e);
     }

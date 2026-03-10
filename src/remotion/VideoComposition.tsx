@@ -1,26 +1,60 @@
-import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
+'use client';
+
+import { AbsoluteFill, Audio, Img, Sequence, Video } from 'remotion';
+import { useEditorStore } from '@/store/editor';
 
 export const VideoComposition: React.FC = () => {
-  const frame = useCurrentFrame();
-  const opacity = interpolate(frame, [0, 20], [0, 1], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
+  const { tracks, assets } = useEditorStore();
+
+  const videoTrack = tracks.find((track) => track.type === 'video');
+  const audioTrack = tracks.find((track) => track.type === 'audio');
+
+  const visualScenes = (videoTrack?.scenes ?? [])
+    .filter((scene) => scene.type === 'image' || scene.type === 'video')
+    .slice()
+    .sort((a, b) => a.startFrame - b.startFrame);
+
+  const audioScenes = (audioTrack?.scenes ?? [])
+    .filter((scene) => scene.type === 'audio')
+    .slice()
+    .sort((a, b) => a.startFrame - b.startFrame);
 
   return (
-    <AbsoluteFill
-      style={{
-        background: 'linear-gradient(135deg, #111827 0%, #1f2937 50%, #0f172a 100%)',
-        color: '#f9fafb',
-        justifyContent: 'center',
-        alignItems: 'center',
-        fontFamily: 'sans-serif',
-      }}
-    >
-      <div style={{ textAlign: 'center', opacity }}>
-        <div style={{ fontSize: 64, fontWeight: 700, marginBottom: 16 }}>Remotion Editor</div>
-        <div style={{ fontSize: 24, color: '#93c5fd' }}>Preview Composition</div>
-      </div>
+    <AbsoluteFill style={{ backgroundColor: '#000' }}>
+      {visualScenes.map((scene) => {
+        const asset = assets.find((item) => item.id === scene.content?.assetId);
+        if (!asset) return null;
+
+        return (
+          <Sequence key={scene.id} from={scene.startFrame} durationInFrames={scene.durationFrames}>
+            <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+              {scene.type === 'image' ? (
+                <Img
+                  src={asset.url}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              ) : (
+                <Video
+                  src={asset.url}
+                  muted
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              )}
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+
+      {audioScenes.map((scene) => {
+        const asset = assets.find((item) => item.id === scene.content?.assetId);
+        if (!asset) return null;
+
+        return (
+          <Sequence key={scene.id} from={scene.startFrame} durationInFrames={scene.durationFrames}>
+            <Audio src={asset.url} />
+          </Sequence>
+        );
+      })}
     </AbsoluteFill>
   );
 };

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useEditorStore } from '@/store/editor';
 import type { Asset, Track } from '@/store/editor';
 import { Plus, Scissors, Clock, Layers, Eye, EyeOff, Lock, Unlock } from 'lucide-react';
@@ -146,6 +146,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   const {
     scenes,
     assets,
+    isPlaying,
     selectedSceneId,
     currentFrame,
     setCurrentFrame,
@@ -177,10 +178,14 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [resizingStartFrame, setResizingStartFrame] = useState(0);
   const [resizingDuration, setResizingDuration] = useState(0);
   const [dropPreview, setDropPreview] = useState<{ frame: number; trackId: string } | null>(null);
+  const [isScrubbing, setIsScrubbing] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
 
-  // 计算总帧数
-  const totalFrames = scenes.reduce((sum, s) => sum + s.durationFrames, 0) || 180;
+  // 计算总帧数（按时间轴最大结束帧，而不是累加）
+  const totalFrames = Math.max(
+    180,
+    ...scenes.map((scene) => scene.startFrame + scene.durationFrames)
+  );
   const totalSeconds = Math.floor(totalFrames / fps);
 
   // 计算每个帧的宽度（根据缩放）
@@ -189,7 +194,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   // 计算时间轴宽度
   const timelineWidth = totalFrames * pixelsPerFrame;
 
-  const getSnappedFrame = (frame: number) => {
+  const getSnappedFrame = useCallback((frame: number) => {
     let finalFrame = frame;
 
     if (snapEnabled) {
@@ -211,7 +216,15 @@ export const Timeline: React.FC<TimelineProps> = ({
     }
 
     return Math.max(0, Math.min(finalFrame, totalFrames));
-  };
+  }, [fps, keyframes, snapEnabled, snapType, totalFrames]);
+
+  const frameFromClientX = useCallback((clientX: number) => {
+    if (!timelineRef.current) return 0;
+    const rect = timelineRef.current.getBoundingClientRect();
+    const scrollLeft = timelineRef.current.scrollLeft;
+    const x = clientX - rect.left + scrollLeft;
+    return getSnappedFrame(Math.floor(x / pixelsPerFrame));
+  }, [getSnappedFrame, pixelsPerFrame]);
 
   useEffect(() => {
     if (!isAssetDragging) {
@@ -219,15 +232,46 @@ export const Timeline: React.FC<TimelineProps> = ({
     }
   }, [isAssetDragging]);
 
+  useEffect(() => {
+    if (!isPlaying) return;
+    const container = timelineRef.current;
+    if (!container) return;
+
+    const playheadX = currentFrame * pixelsPerFrame;
+    const left = container.scrollLeft;
+    const right = left + container.clientWidth;
+    const margin = 80;
+    const maxScroll = Math.max(0, timelineWidth - container.clientWidth);
+
+    if (playheadX < left + margin) {
+      container.scrollLeft = Math.max(0, Math.min(maxScroll, playheadX - margin));
+    } else if (playheadX > right - margin) {
+      container.scrollLeft = Math.max(0, Math.min(maxScroll, playheadX - container.clientWidth + margin));
+    }
+  }, [currentFrame, isPlaying, pixelsPerFrame, timelineWidth]);
+
+  useEffect(() => {
+    if (!isScrubbing) return;
+
+    const onMouseMove = (event: MouseEvent) => {
+      setCurrentFrame(frameFromClientX(event.clientX));
+    };
+
+    const onMouseUp = () => {
+      setIsScrubbing(false);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isScrubbing, frameFromClientX, setCurrentFrame]);
+
   // 处理时间轴点击
   const handleTimelineClick = (e: React.MouseEvent) => {
-    if (!timelineRef.current) return;
-
-    const rect = timelineRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const frame = Math.floor(x / pixelsPerFrame);
-
-    setCurrentFrame(getSnappedFrame(frame));
+    setCurrentFrame(frameFromClientX(e.clientX));
   };
 
   // 处理场景拖拽开始
@@ -247,25 +291,33 @@ export const Timeline: React.FC<TimelineProps> = ({
     selectScene(sceneId);
   };
 
-  // 处理场景拖拽中
-  const handleSceneDrag = (e: React.MouseEvent) => {
-    if (!draggedScene || !isDragging) return;
-
-    const deltaX = e.clientX - dragStartX;
-    const deltaFrames = Math.round(deltaX / pixelsPerFrame);
-    const newStartFrame = Math.max(0, dragStartFrame + deltaFrames);
-
-    // 临时更新场景位置（但不应用吸附）
-    updateScenePosition(draggedScene.id, newStartFrame);
-  };
-
   // 处理场景拖拽结束
-  const handleSceneDragEnd = () => {
-    if (!draggedScene) return;
-
+  const handleSceneDragEnd = useCallback(() => {
     setIsDragging(false);
     endSceneDrag();
-  };
+  }, [endSceneDrag]);
+
+  useEffect(() => {
+    if (!isDragging || !draggedScene) return;
+
+    const onMouseMove = (event: MouseEvent) => {
+      const deltaX = event.clientX - dragStartX;
+      const deltaFrames = Math.round(deltaX / pixelsPerFrame);
+      const newStartFrame = Math.max(0, dragStartFrame + deltaFrames);
+      updateScenePosition(draggedScene.id, newStartFrame);
+    };
+
+    const onMouseUp = () => {
+      handleSceneDragEnd();
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [dragStartFrame, dragStartX, draggedScene, handleSceneDragEnd, isDragging, pixelsPerFrame, updateScenePosition]);
 
   // 处理场景延伸开始
   const handleResizeStart = (sceneId: string, side: 'start' | 'end', e: React.MouseEvent) => {
@@ -439,7 +491,17 @@ export const Timeline: React.FC<TimelineProps> = ({
       </div>
 
       {/* 时间轴内容 */}
-      <div className="flex-1 overflow-x-auto overflow-y-auto relative" ref={timelineRef}>
+      <div
+        className="flex-1 overflow-x-auto overflow-y-auto relative"
+        ref={timelineRef}
+        onMouseDownCapture={(e) => {
+          if (e.button !== 0) return;
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('[data-scene-id]')) return;
+          setIsScrubbing(true);
+          setCurrentFrame(frameFromClientX(e.clientX));
+        }}
+      >
         {/* 时间标尺 */}
         <div
           className="h-6 border-b border-gray-700 bg-gray-900 sticky top-0 z-10"
@@ -519,8 +581,16 @@ export const Timeline: React.FC<TimelineProps> = ({
                     handleTimelineClick(e);
                   }
                 }}
-                onDragOver={(e) => {
-                  if (!isAssetDragging) return;
+                onDragOverCapture={(e) => {
+                  if (!onAssetDrop) return;
+
+                  const types = Array.from(e.dataTransfer.types || []);
+                  const looksLikeAssetDrag =
+                    types.includes('application/x-movie-maker-asset+json') || types.includes('asset');
+
+                  if (!isAssetDragging && !looksLikeAssetDrag) return;
+
+                  // Crucial: preventDefault here so `drop` will fire.
                   e.preventDefault();
                   e.dataTransfer.dropEffect = 'copy';
 
@@ -543,11 +613,18 @@ export const Timeline: React.FC<TimelineProps> = ({
                   }
                   setDropPreview((current) => (current?.trackId === track.id ? null : current));
                 }}
-                onDrop={(e) => {
+                onDropCapture={(e) => {
                   if (!onAssetDrop) return;
 
                   e.preventDefault();
                   e.stopPropagation();
+
+                  const assetData =
+                    e.dataTransfer.getData('application/x-movie-maker-asset+json') ||
+                    e.dataTransfer.getData('asset') ||
+                    e.dataTransfer.getData('text/plain');
+
+                  if (!assetData) return;
 
                   const rect = e.currentTarget.getBoundingClientRect();
                   const scrollLeft = timelineRef.current?.scrollLeft ?? 0;
@@ -599,6 +676,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                     return (
                       <div
                         key={scene.id}
+                        data-scene-id={scene.id}
                         className={`absolute top-2 h-12 rounded transition-all flex items-center overflow-hidden border-2 ${
                           scene.type === 'audio'
                             ? selectedSceneId === scene.id
@@ -607,18 +685,18 @@ export const Timeline: React.FC<TimelineProps> = ({
                             : selectedSceneId === scene.id
                               ? 'border-blue-500 bg-blue-900/30 z-10'
                               : 'border-gray-700 bg-gray-700/50 hover:border-gray-600'
-                        } ${isDragging && draggedScene?.id === scene.id ? 'opacity-50' : ''} ${track.locked ? 'opacity-50 cursor-not-allowed' : 'cursor-move'}`}
+                        } ${isDragging && draggedScene?.id === scene.id ? 'opacity-50' : ''} ${track.locked ? 'opacity-50 cursor-not-allowed' : 'cursor-move'} ${isAssetDragging ? 'pointer-events-none' : ''}`}
                         style={{
                           left: `${scene.startFrame * pixelsPerFrame}px`,
                           width: `${scene.durationFrames * pixelsPerFrame}px`,
                         }}
-                        draggable={!track.locked}
-                        onDragStart={(e) => {
+                        onMouseDown={(e) => {
+                          if (track.locked) return;
+                          if (e.button !== 0) return;
                           e.preventDefault();
+                          e.stopPropagation();
                           handleSceneDragStart(scene.id, e);
                         }}
-                        onDrag={handleSceneDrag}
-                        onDragEnd={handleSceneDragEnd}
                         title={scene.name}
                       >
                         {!track.locked && (
