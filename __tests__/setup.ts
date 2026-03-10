@@ -107,12 +107,24 @@ beforeEach(async () => {
     (testPath.includes('/__tests__/integration/') && !testPath.endsWith('mp4-export.test.ts'));
 
   if (shouldCleanup) {
+    // Do NOT unlink the SQLite file here.
+    // better-sqlite3 keeps an open handle; unlinking can cause readonly/IO errors.
+    // Instead, clear tables to keep tests isolated.
     try {
-      if (fs.existsSync(TEST_DB_PATH)) {
-        fs.unlinkSync(TEST_DB_PATH);
-      }
+      fs.mkdirSync(path.dirname(TEST_DB_PATH), { recursive: true });
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { db } = require('@/lib/db');
+
+      db.exec(`
+        DELETE FROM keyframes;
+        DELETE FROM exports;
+        DELETE FROM assets;
+        DELETE FROM scenes;
+        DELETE FROM projects;
+        DELETE FROM users;
+      `);
     } catch {
-      // ignore cleanup errors before test DB is created
+      // ignore cleanup errors; individual tests will surface DB issues
     }
   }
 

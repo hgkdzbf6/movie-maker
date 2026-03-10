@@ -3,38 +3,14 @@
  * 测试所有数据库模型和操作
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import { User, Project, Scene, Asset, Export, Keyframe, db } from '@/lib/db';
 import path from 'path';
-import fs from 'fs';
-
-// 临时数据库路径
-const TEMP_DB_PATH = path.join(process.cwd(), '.test-data', 'test.db');
 
 describe('Database Tests', () => {
   it('应该使用独立的测试数据库', () => {
     expect(db.name).toContain(path.join('.test-data', 'test.db'));
     expect(db.name).not.toContain(path.join('data', 'remotion.db'));
-  });
-
-  beforeEach(async () => {
-    // 创建测试数据库目录
-    const testDir = path.dirname(TEMP_DB_PATH);
-    if (!fs.existsSync(testDir)) {
-      fs.mkdirSync(testDir, { recursive: true });
-    }
-
-    // 清理旧数据库
-    if (fs.existsSync(TEMP_DB_PATH)) {
-      fs.unlinkSync(TEMP_DB_PATH);
-    }
-  });
-
-  afterEach(() => {
-    // 清理测试数据库
-    if (fs.existsSync(TEMP_DB_PATH)) {
-      fs.unlinkSync(TEMP_DB_PATH);
-    }
   });
 
   describe('User Model', () => {
