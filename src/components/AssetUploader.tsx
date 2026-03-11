@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { Upload, FileVideo, FileImage, Music } from 'lucide-react';
+import { extractAssetMetadata } from '@/lib/metadata-extractor';
 
 export interface AssetFile {
   id: string;
@@ -13,6 +14,8 @@ export interface AssetFile {
   width?: number;
   height?: number;
   thumbnail?: string;
+  sampleRate?: number;
+  numberOfChannels?: number;
 }
 
 interface AssetUploaderProps {
@@ -36,7 +39,7 @@ export const AssetUploader: React.FC<AssetUploaderProps> = ({
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      
+
       // Check file size
       if (file.size > maxSize) {
         alert(`文件 ${file.name} 太大（最大 ${maxSize / 1024 / 1024}MB）`);
@@ -45,7 +48,7 @@ export const AssetUploader: React.FC<AssetUploaderProps> = ({
 
       // Create object URL
       const url = URL.createObjectURL(file);
-      
+
       // Determine file type
       let type: 'video' | 'image' | 'audio' = 'image';
       if (file.type.startsWith('video/')) {
@@ -54,12 +57,30 @@ export const AssetUploader: React.FC<AssetUploaderProps> = ({
         type = 'audio';
       }
 
+      // Extract metadata
+      let metadata: Partial<AssetFile> = {};
+      try {
+        const extracted = await extractAssetMetadata(file, type);
+        metadata = extracted;
+      } catch (error) {
+        console.error(`Failed to extract metadata for ${file.name}:`, error);
+        // Use default values as fallback
+        if (type === 'video') {
+          metadata = { duration: 5, width: 1920, height: 1080 };
+        } else if (type === 'audio') {
+          metadata = { duration: 5 };
+        } else if (type === 'image') {
+          metadata = { width: 1920, height: 1080 };
+        }
+      }
+
       uploadedFiles.push({
         id: Date.now().toString() + i,
         name: file.name,
         type,
         url,
-        size: file.size
+        size: file.size,
+        ...metadata,
       });
     }
 

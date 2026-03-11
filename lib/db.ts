@@ -77,6 +77,8 @@ db.exec(`
     width INTEGER,
     height INTEGER,
     thumbnail TEXT,
+    sample_rate INTEGER,
+    number_of_channels INTEGER,
     created_at TEXT NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
   );
@@ -499,6 +501,8 @@ export const Asset = {
     width?: number;
     height?: number;
     thumbnail?: string;
+    sampleRate?: number;
+    numberOfChannels?: number;
   }) => {
     const id = randomUUID();
     const asset = {
@@ -511,12 +515,14 @@ export const Asset = {
       width: data.width || null,
       height: data.height || null,
       thumbnail: data.thumbnail || null,
+      sample_rate: data.sampleRate || null,
+      number_of_channels: data.numberOfChannels || null,
       created_at: now(),
     };
 
     db.prepare(`
-      INSERT INTO assets (id, project_id, name, type, url, duration, width, height, thumbnail, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO assets (id, project_id, name, type, url, duration, width, height, thumbnail, sample_rate, number_of_channels, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       asset.id,
       asset.project_id,
@@ -527,6 +533,8 @@ export const Asset = {
       asset.width,
       asset.height,
       asset.thumbnail,
+      asset.sample_rate,
+      asset.number_of_channels,
       asset.created_at
     );
 
@@ -564,6 +572,11 @@ export const Asset = {
   update: (id: string, data: Partial<{
     name: string;
     thumbnail: string;
+    duration: number;
+    width: number;
+    height: number;
+    sampleRate: number;
+    numberOfChannels: number;
   }>) => {
     const updates: string[] = [];
     const values: any[] = [];
@@ -575,6 +588,26 @@ export const Asset = {
     if (data.thumbnail !== undefined) {
       updates.push('thumbnail = ?');
       values.push(data.thumbnail);
+    }
+    if (data.duration !== undefined) {
+      updates.push('duration = ?');
+      values.push(data.duration);
+    }
+    if (data.width !== undefined) {
+      updates.push('width = ?');
+      values.push(data.width);
+    }
+    if (data.height !== undefined) {
+      updates.push('height = ?');
+      values.push(data.height);
+    }
+    if (data.sampleRate !== undefined) {
+      updates.push('sample_rate = ?');
+      values.push(data.sampleRate);
+    }
+    if (data.numberOfChannels !== undefined) {
+      updates.push('number_of_channels = ?');
+      values.push(data.numberOfChannels);
     }
 
     if (updates.length === 0) {

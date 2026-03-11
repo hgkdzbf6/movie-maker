@@ -50,6 +50,8 @@ export interface Asset {
   height?: number;
   thumbnail?: string;
   createdAt?: string;
+  sampleRate?: number;
+  numberOfChannels?: number;
 }
 
 export interface Project {
