@@ -673,6 +673,8 @@ export const useEditorStore = create<EditorState>()(
         snapType: 'frame',
         keyframes: [],
         selectedKeyframeId: null,
+        history: [],
+        historyIndex: -1,
       })),
 
       exportProjectFile: () => {
