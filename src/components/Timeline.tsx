@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useEditorStore } from '@/store/editor';
 import type { Asset, Track } from '@/store/editor';
-import { Plus, Scissors, Clock, Layers, Eye, EyeOff, Lock, Unlock, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Scissors, Clock, Layers, Eye, EyeOff, Lock, Unlock, Trash2, Edit2, ZoomIn, ZoomOut } from 'lucide-react';
 
 const audioWaveformCache = new Map<string, number[]>();
 
@@ -166,6 +166,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     renameTrack,
     setTrackHeight,
     timelineZoom,
+    setTimelineZoom,
     snapEnabled,
     snapType,
     keyframes,
@@ -192,6 +193,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [resizingTrackId, setResizingTrackId] = useState<string | null>(null);
   const [resizingTrackStartY, setResizingTrackStartY] = useState(0);
   const [resizingTrackStartHeight, setResizingTrackStartHeight] = useState(0);
+  const [snapGuides, setSnapGuides] = useState<Array<{ frame: number; type: 'scene' | 'playhead' | 'keyframe' }>>([]);
   const timelineRef = useRef<HTMLDivElement>(null);
 
   // 计算总帧数（按时间轴最大结束帧，而不是累加）
@@ -209,6 +211,8 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   const getSnappedFrame = useCallback((frame: number) => {
     let finalFrame = frame;
+    const snapThreshold = 5; // 吸附阈值（帧数）
+    const guides: Array<{ frame: number; type: 'scene' | 'playhead' | 'keyframe' }> = [];
 
     if (snapEnabled) {
       if (snapType === 'frame') {
@@ -222,14 +226,38 @@ export const Timeline: React.FC<TimelineProps> = ({
           return kfDiff < nearestDiff ? kf : nearest;
         }, keyframes[0]);
 
-        if (nearestKeyframe && Math.abs(nearestKeyframe.frame - frame) < 5) {
+        if (nearestKeyframe && Math.abs(nearestKeyframe.frame - frame) < snapThreshold) {
           finalFrame = nearestKeyframe.frame;
+          guides.push({ frame: nearestKeyframe.frame, type: 'keyframe' });
+        }
+      }
+
+      // 吸附到播放头
+      if (Math.abs(currentFrame - frame) < snapThreshold) {
+        finalFrame = currentFrame;
+        guides.push({ frame: currentFrame, type: 'playhead' });
+      }
+
+      // 吸附到场景边缘
+      for (const scene of scenes) {
+        const sceneStart = scene.startFrame;
+        const sceneEnd = scene.startFrame + scene.durationFrames;
+
+        if (Math.abs(sceneStart - frame) < snapThreshold) {
+          finalFrame = sceneStart;
+          guides.push({ frame: sceneStart, type: 'scene' });
+          break;
+        } else if (Math.abs(sceneEnd - frame) < snapThreshold) {
+          finalFrame = sceneEnd;
+          guides.push({ frame: sceneEnd, type: 'scene' });
+          break;
         }
       }
     }
 
+    setSnapGuides(guides);
     return Math.max(0, Math.min(finalFrame, totalFrames));
-  }, [fps, keyframes, snapEnabled, snapType, totalFrames]);
+  }, [fps, keyframes, snapEnabled, snapType, totalFrames, currentFrame, scenes]);
 
   const frameFromClientX = useCallback((clientX: number) => {
     if (!timelineRef.current) return 0;
@@ -566,6 +594,16 @@ export const Timeline: React.FC<TimelineProps> = ({
     };
   }, [resizingTrackId, resizingTrackStartY, resizingTrackStartHeight, setTrackHeight]);
 
+  // 处理滚轮缩放
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const newZoom = Math.max(0.1, Math.min(5, timelineZoom + delta));
+      setTimelineZoom(newZoom);
+    }
+  }, [timelineZoom, setTimelineZoom]);
+
   // 获取当前场景
   const currentScene = scenes.find(s => currentFrame >= s.startFrame && currentFrame < s.startFrame + s.durationFrames);
   const previewDurationFrames = Math.max(30, Math.round((draggedAssetDuration || 3) * fps));
@@ -588,6 +626,29 @@ export const Timeline: React.FC<TimelineProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* 缩放控制 */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-gray-800 rounded border border-gray-700">
+            <button
+              onClick={() => setTimelineZoom(Math.max(0.1, timelineZoom - 0.2))}
+              className="p-1 hover:bg-gray-700 rounded transition"
+              title="缩小 (Ctrl + -)"
+            >
+              <ZoomOut size={14} />
+            </button>
+            <span className="text-xs text-gray-400 font-mono min-w-[3rem] text-center">
+              {(timelineZoom * 100).toFixed(0)}%
+            </span>
+            <button
+              onClick={() => setTimelineZoom(Math.min(5, timelineZoom + 0.2))}
+              className="p-1 hover:bg-gray-700 rounded transition"
+              title="放大 (Ctrl + +)"
+            >
+              <ZoomIn size={14} />
+            </button>
+          </div>
+
+          <div className="w-px h-6 bg-gray-700" />
+
           {/* 轨道操作按钮 */}
           <button
             onClick={() => handleAddTrack('video')}
@@ -634,6 +695,7 @@ export const Timeline: React.FC<TimelineProps> = ({
       <div
         className="flex-1 overflow-x-auto overflow-y-auto relative"
         ref={timelineRef}
+        onWheel={handleWheel}
         onMouseDownCapture={(e) => {
           if (e.button !== 0) return;
           const target = e.target as HTMLElement | null;
@@ -644,26 +706,75 @@ export const Timeline: React.FC<TimelineProps> = ({
       >
         {/* 时间标尺 */}
         <div
-          className="h-6 border-b border-gray-700 bg-gray-900 sticky top-0 z-10"
+          className="h-8 border-b border-gray-700 bg-gray-900 sticky top-0 z-10"
           style={{ width: `${timelineWidth}px` }}
         >
-          {Array.from({ length: Math.ceil(totalFrames / (fps * 5)) }).map((_, i) => {
-            const frame = i * fps * 5;
-            const time = Math.floor(frame / fps);
-            const left = frame * pixelsPerFrame;
+          {(() => {
+            // 根据缩放级别自适应刻度间隔
+            let majorInterval: number; // 主刻度间隔（秒）
+            let minorInterval: number; // 次刻度间隔（秒）
 
-            return (
-              <div
-                key={i}
-                className="absolute top-0 bottom-0 flex items-end pb-1 border-l border-gray-700"
-                style={{ left: `${left}px` }}
-              >
-                <span className="text-xs text-gray-500 font-mono mb-1">
-                  {time}s
-                </span>
-              </div>
-            );
-          })}
+            if (timelineZoom >= 2) {
+              // 高缩放：每秒主刻度，每 0.5 秒次刻度
+              majorInterval = 1;
+              minorInterval = 0.5;
+            } else if (timelineZoom >= 1) {
+              // 中缩放：每 5 秒主刻度，每秒次刻度
+              majorInterval = 5;
+              minorInterval = 1;
+            } else if (timelineZoom >= 0.5) {
+              // 低缩放：每 10 秒主刻度，每 5 秒次刻度
+              majorInterval = 10;
+              minorInterval = 5;
+            } else {
+              // 极低缩放：每 30 秒主刻度，每 10 秒次刻度
+              majorInterval = 30;
+              minorInterval = 10;
+            }
+
+            const totalSeconds = Math.ceil(totalFrames / fps);
+            const marks: JSX.Element[] = [];
+
+            // 生成主刻度和次刻度
+            for (let sec = 0; sec <= totalSeconds; sec++) {
+              const frame = sec * fps;
+              const left = frame * pixelsPerFrame;
+              const isMajor = sec % majorInterval === 0;
+              const isMinor = sec % minorInterval === 0;
+
+              if (isMajor) {
+                // 主刻度：显示时间标签
+                const minutes = Math.floor(sec / 60);
+                const seconds = sec % 60;
+                const timeLabel = minutes > 0
+                  ? `${minutes}:${seconds.toString().padStart(2, '0')}`
+                  : `${sec}s`;
+
+                marks.push(
+                  <div
+                    key={`major-${sec}`}
+                    className="absolute top-0 bottom-0 flex flex-col justify-end border-l-2 border-gray-600"
+                    style={{ left: `${left}px` }}
+                  >
+                    <span className="text-xs text-gray-300 font-mono font-semibold px-1 pb-0.5">
+                      {timeLabel}
+                    </span>
+                  </div>
+                );
+              } else if (isMinor) {
+                // 次刻度：较短的刻度线
+                marks.push(
+                  <div
+                    key={`minor-${sec}`}
+                    className="absolute bottom-0 h-3 border-l border-gray-700"
+                    style={{ left: `${left}px` }}
+                  />
+                );
+              }
+            }
+
+            return marks;
+          })()}
         </div>
 
         {/* 轨道区域 */}
@@ -1018,6 +1129,36 @@ export const Timeline: React.FC<TimelineProps> = ({
         >
           <div className="absolute -top-2 -left-2 w-4 h-4 bg-red-500 rounded-t" />
         </div>
+
+        {/* 吸附引导线 */}
+        {snapGuides.map((guide, index) => (
+          <div
+            key={`snap-guide-${index}`}
+            className="absolute top-0 bottom-0 pointer-events-none z-20"
+            style={{ left: `${guide.frame * pixelsPerFrame}px` }}
+          >
+            <div
+              className={`w-px h-full ${
+                guide.type === 'playhead'
+                  ? 'bg-red-400/50'
+                  : guide.type === 'keyframe'
+                  ? 'bg-yellow-400/50'
+                  : 'bg-blue-400/50'
+              }`}
+            />
+            <div
+              className={`absolute -top-1 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap ${
+                guide.type === 'playhead'
+                  ? 'bg-red-500/80 text-white'
+                  : guide.type === 'keyframe'
+                  ? 'bg-yellow-500/80 text-white'
+                  : 'bg-blue-500/80 text-white'
+              }`}
+            >
+              {guide.type === 'playhead' ? '播放头' : guide.type === 'keyframe' ? '关键帧' : '场景边缘'}
+            </div>
+          </div>
+        ))}
 
         {/* 当前时间指示器 */}
         <div
