@@ -15,7 +15,9 @@ import { AudioControlPanel } from '@/components/AudioControlPanel';
 import { VideoEffectPanel } from '@/components/VideoEffectPanel';
 import { ShortcutHelpPanel } from '@/components/ShortcutHelpPanel';
 import { useEditorShortcuts } from '@/hooks/useEditorShortcuts';
+import { useAutoSave } from '@/hooks/useAutoSave';
 import { validateExport } from '@/lib/export-validator';
+import { EXPORT_PRESETS } from '@/lib/export-presets';
 
 export default function EditorPage() {
   const {
@@ -47,6 +49,9 @@ export default function EditorPage() {
 
   // 注册快捷键
   useEditorShortcuts();
+
+  // 自动保存
+  const { lastSaveTime, isSaving } = useAutoSave({ interval: 30000, enabled: true });
 
   const [rightPanelTab, setRightPanelTab] = useState<'inspector' | 'effects'>('inspector');
   const [, setAssetFiles] = useState<AssetFile[]>([]);
@@ -574,7 +579,10 @@ export default function EditorPage() {
               </h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <div className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-800 px-2 py-0.5 rounded">
-                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full" title="已自动保存" />
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${isSaving ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`}
+                    title={isSaving ? '保存中...' : lastSaveTime ? `上次保存: ${lastSaveTime.toLocaleTimeString()}` : '已自动保存'}
+                  />
                   <span>未命名项目</span>
                 </div>
               </div>
@@ -854,6 +862,44 @@ export default function EditorPage() {
           {/* 导出设置内容 */}
           {activeTab === 'export' && (
             <div className="flex-1 overflow-y-auto p-4">
+              {/* 平台预设 */}
+              <div className="mb-6">
+                <div className="text-xs text-gray-500 font-medium mb-3">
+                  平台预设
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {EXPORT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      className="p-3 text-left rounded border border-gray-700 hover:border-blue-500 hover:bg-gray-800 transition cursor-pointer"
+                      onClick={() => {
+                        useEditorStore.getState().setExportSettings({
+                          format: preset.format,
+                          quality: preset.quality,
+                          resolution: preset.resolution,
+                          fps: preset.fps,
+                          preset: preset.platform.toLowerCase() as any,
+                        });
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">{preset.icon}</span>
+                        <span className="text-sm font-medium text-gray-200">{preset.name}</span>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {preset.resolution.width}x{preset.resolution.height} · {preset.fps}fps
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-gray-800 pt-4 mb-4">
+                <div className="text-xs text-gray-500 font-medium mb-3">
+                  自定义设置
+                </div>
+              </div>
+
               {/* 格式选择 */}
               <div className="mb-4">
                 <div className="text-xs text-gray-500 font-medium mb-2">

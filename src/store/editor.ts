@@ -102,6 +102,7 @@ export interface ExportSettings {
   outputPath: string;
   resolution: { width: number; height: number };
   fps: number;
+  preset?: 'youtube' | 'instagram' | 'tiktok' | 'twitter' | 'custom';
 }
 
 export interface Keyframe {
