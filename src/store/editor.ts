@@ -14,6 +14,7 @@ export interface Scene {
   type: 'video' | 'image' | 'text' | 'transition' | 'audio';
   startFrame: number;
   durationFrames: number;
+  trimStart?: number;
   content?: {
     text?: string;
     assetId?: string;
@@ -45,6 +46,8 @@ export interface Asset {
   name: string;
   type: 'image' | 'video' | 'audio';
   url: string;
+  relativePath?: string;
+  missing?: boolean;
   duration?: number;
   width?: number;
   height?: number;
@@ -139,6 +142,8 @@ interface EditorState {
   selectScene: (id: string | null) => void;
   duplicateScene: (id: string) => void;
   splitScene: (id: string, frame: number) => void;
+  trimSceneLeft: (id: string, newStartFrame: number) => void;
+  trimSceneRight: (id: string, newEndFrame: number) => void;
   reorderScenes: (fromIndex: number, toIndex: number) => void;
   addAsset: (asset: Asset) => void;
   deleteAsset: (id: string) => void;
@@ -374,6 +379,52 @@ export const useEditorStore = create<EditorState>()(
         };
       }),
 
+      trimSceneLeft: (id, newStartFrame) => set((state) => {
+        const scene = state.scenes.find(s => s.id === id);
+        if (!scene) return state;
+
+        const minDuration = 30; // 最小 1 秒
+        const maxTrim = scene.durationFrames - minDuration;
+        const trimAmount = Math.max(0, Math.min(maxTrim, newStartFrame - scene.startFrame));
+
+        const newDuration = scene.durationFrames - trimAmount;
+        const newStart = scene.startFrame + trimAmount;
+        const newTrimStart = (scene.trimStart || 0) + trimAmount;
+
+        return {
+          scenes: state.scenes.map(s =>
+            s.id === id ? { ...s, startFrame: newStart, durationFrames: newDuration, trimStart: newTrimStart } : s
+          ),
+          tracks: state.tracks.map(track => ({
+            ...track,
+            scenes: track.scenes.map(s =>
+              s.id === id ? { ...s, startFrame: newStart, durationFrames: newDuration, trimStart: newTrimStart } : s
+            ),
+          })),
+        };
+      }),
+
+      trimSceneRight: (id, newEndFrame) => set((state) => {
+        const scene = state.scenes.find(s => s.id === id);
+        if (!scene) return state;
+
+        const minDuration = 30; // 最小 1 秒
+        // const currentEndFrame = scene.startFrame + scene.durationFrames;
+        const newDuration = Math.max(minDuration, newEndFrame - scene.startFrame);
+
+        return {
+          scenes: state.scenes.map(s =>
+            s.id === id ? { ...s, durationFrames: newDuration } : s
+          ),
+          tracks: state.tracks.map(track => ({
+            ...track,
+            scenes: track.scenes.map(s =>
+              s.id === id ? { ...s, durationFrames: newDuration } : s
+            ),
+          })),
+        };
+      }),
+
       reorderScenes: (fromIndex, toIndex) => set((state) => {
         const newScenes = [...state.scenes];
         const [removed] = newScenes.splice(fromIndex, 1);
@@ -415,7 +466,7 @@ export const useEditorStore = create<EditorState>()(
         isPlaying: !state.isPlaying
       })),
 
-      setIsPlaying: (isPlaying) => set({ isPlaying }),
+      setIsPlaying: (playing) => set({ isPlaying: playing }),
 
       endSceneDrag: () => set({ draggedScene: null }),
 
@@ -539,10 +590,24 @@ export const useEditorStore = create<EditorState>()(
         const scenes = tracks.flatMap((track) => track.scenes || []);
         const assets = Array.isArray(file.assets) ? file.assets : [];
 
+        // Check for missing assets
+        const assetsWithMissingFlag = assets.map(asset => {
+          // If asset has relativePath, check if file exists
+          if (asset.relativePath) {
+            // In browser environment, we can't directly check file existence
+            // This will be handled by the server or during rendering
+            return {
+              ...asset,
+              missing: false, // Will be updated by server check
+            };
+          }
+          return asset;
+        });
+
         return {
           project: null,
           scenes,
-          assets,
+          assets: assetsWithMissingFlag,
           selectedSceneId: null,
           currentFrame: Math.max(0, file.currentFrame || 0),
           isPlaying: false,

@@ -60,6 +60,7 @@ db.exec(`
     type TEXT NOT NULL,
     start_frame INTEGER NOT NULL,
     duration_frames INTEGER NOT NULL,
+    trim_start INTEGER DEFAULT 0,
     content TEXT NOT NULL,
     keyframes TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -349,6 +350,7 @@ export const Scene = {
     type: 'video' | 'image' | 'text' | 'transition';
     startFrame: number;
     durationFrames: number;
+    trimStart?: number;
     content: any;
   }) => {
     const id = randomUUID();
@@ -359,6 +361,7 @@ export const Scene = {
       type: data.type,
       start_frame: data.startFrame,
       duration_frames: data.durationFrames,
+      trim_start: data.trimStart || 0,
       content: JSON.stringify(data.content || {}),
       keyframes: JSON.stringify([]),
       created_at: now(),
@@ -366,8 +369,8 @@ export const Scene = {
     };
 
     db.prepare(`
-      INSERT INTO scenes (id, project_id, name, type, start_frame, duration_frames, content, keyframes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scenes (id, project_id, name, type, start_frame, duration_frames, trim_start, content, keyframes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       scene.id,
       scene.project_id,
@@ -375,13 +378,14 @@ export const Scene = {
       scene.type,
       scene.start_frame,
       scene.duration_frames,
+      scene.trim_start,
       scene.content,
       scene.keyframes,
       scene.created_at,
       scene.updated_at
     );
 
-    return { ...scene, content: data.content || {}, keyframes: [] };
+    return { ...scene, content: data.content || {}, keyframes: [], trimStart: scene.trim_start };
   },
 
   findById: (id: string) => {
@@ -413,6 +417,7 @@ export const Scene = {
     name: string;
     startFrame: number;
     durationFrames: number;
+    trimStart: number;
     content: any;
     keyframes: any[];
   }>) => {
@@ -430,6 +435,10 @@ export const Scene = {
     if (data.durationFrames !== undefined) {
       updates.push('duration_frames = ?');
       values.push(data.durationFrames);
+    }
+    if (data.trimStart !== undefined) {
+      updates.push('trim_start = ?');
+      values.push(data.trimStart);
     }
     if (data.content !== undefined) {
       updates.push('content = ?');

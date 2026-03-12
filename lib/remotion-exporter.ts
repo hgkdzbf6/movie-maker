@@ -1,6 +1,6 @@
 /**
  * Remotion 视频导出服务
- * 使用 Remotion CLI 渲染视频
+ * 使用 Remotion renderMedia API 渲染视频
  */
 
 import { Project } from './db';
@@ -30,6 +30,7 @@ export interface ExportConfig {
 
 /**
  * 导出视频为 MP4
+ * 使用动态导入避免在 Next.js 构建时加载 @remotion/bundler
  */
 export async function exportToMP4(options: ExportOptions): Promise<string> {
   const project = Project.findById(options.projectId);
@@ -41,54 +42,65 @@ export async function exportToMP4(options: ExportOptions): Promise<string> {
   const outputDir = path.dirname(options.outputPath);
   await fs.mkdir(outputDir, { recursive: true });
 
-  // 质量配置
-  const qualitySettings = {
-    low: { bitrate: '2000k', crf: 28, preset: 'faster' },
-    medium: { bitrate: '5000k', crf: 23, preset: 'medium' },
-    high: { bitrate: '10000k', crf: 18, preset: 'slow' },
-  };
+  console.log(`[导出] 开始导出: ${options.outputPath}`);
+  console.log(`[导出] 格式: ${options.format}, 质量: ${options.quality}`);
 
-  const quality = qualitySettings[options.quality];
+  try {
+    // 动态导入 Remotion 模块（仅在服务器端运行时加载）
+    const { bundle } = await import('@remotion/bundler');
+    const { renderMedia, selectComposition } = await import('@remotion/renderer');
 
-  // 构建导出配置
-  const config: ExportConfig = {
-    compositionId: 'VideoComposition',
-    outputLocation: options.outputPath,
-    codec: 'h264',
-    quality: parseInt(quality.bitrate),
-    overwrite: true,
-    logLevel: 'info',
-    env: {
-      ...process.env,
-      PROJECT_CONFIG: JSON.stringify(project.config),
-    },
-  };
+    // 1. Bundle Remotion 项目
+    const bundleLocation = await bundle({
+      entryPoint: path.join(process.cwd(), 'src/remotion/index.ts'),
+      webpackOverride: (config) => config,
+    });
 
-  return new Promise((resolve, reject) => {
-    console.log(`[导出] 开始导出: ${options.outputPath}`);
-    console.log(`[导出] 格式: ${options.format}, 质量: ${options.quality}`);
+    console.log(`[导出] Bundle 完成: ${bundleLocation}`);
 
-    // 使用 Remotion Studio 渲染
-    // 注意：这里需要实际的 Remotion CLI 调用
-    // 由于 Remotion 需要 Web 环境，我们使用模拟导出
+    // 2. 选择 composition
+    const composition = await selectComposition({
+      serveUrl: bundleLocation,
+      id: 'VideoComposition',
+      inputProps: {},
+    });
 
-    simulateExport(
-      config,
-      (progress) => {
-        options.onProgress?.(progress);
+    console.log(`[导出] Composition 选择完成:`, composition);
+
+    // 3. 质量配置
+    const qualitySettings = {
+      low: { crf: 28, videoBitrate: '2000k' },
+      medium: { crf: 23, videoBitrate: '5000k' },
+      high: { crf: 18, videoBitrate: '10000k' },
+    };
+
+    const quality = qualitySettings[options.quality];
+
+    // 4. 渲染视频
+    await renderMedia({
+      composition,
+      serveUrl: bundleLocation,
+      codec: 'h264',
+      outputLocation: options.outputPath,
+      inputProps: {},
+      crf: quality.crf,
+      videoBitrate: quality.videoBitrate,
+      overwrite: true,
+      onProgress: ({ progress }) => {
+        const percentage = Math.round(progress * 100);
+        console.log(`[导出] 进度: ${percentage}%`);
+        options.onProgress?.(percentage);
       },
-      (outputPath) => {
-        console.log(`[导出] 导出完成: ${outputPath}`);
-        options.onComplete?.(outputPath);
-        resolve(outputPath);
-      },
-      (error) => {
-        console.error(`[导出] 导出失败:`, error);
-        options.onError?.(error);
-        reject(error);
-      }
-    );
-  });
+    });
+
+    console.log(`[导出] 导出完成: ${options.outputPath}`);
+    options.onComplete?.(options.outputPath);
+    return options.outputPath;
+  } catch (error) {
+    console.error(`[导出] 导出失败:`, error);
+    options.onError?.(error as Error);
+    throw error;
+  }
 }
 
 /**
@@ -103,30 +115,48 @@ export async function exportToGIF(options: ExportOptions): Promise<string> {
   const outputDir = path.dirname(options.outputPath);
   await fs.mkdir(outputDir, { recursive: true });
 
-  const config: ExportConfig = {
-    compositionId: 'VideoComposition',
-    outputLocation: options.outputPath,
-    codec: 'gif',
-    quality: options.quality === 'high' ? 100 : options.quality === 'medium' ? 75 : 50,
-    overwrite: true,
-    logLevel: 'info',
-    env: process.env as any,
-  };
+  console.log(`[导出] 开始导出 GIF: ${options.outputPath}`);
 
-  return new Promise((resolve, reject) => {
-    simulateExport(
-      config,
-      (progress) => options.onProgress?.(progress),
-      (outputPath) => {
-        options.onComplete?.(outputPath);
-        resolve(outputPath);
+  try {
+    // 动态导入 Remotion 模块
+    const { bundle } = await import('@remotion/bundler');
+    const { renderMedia, selectComposition } = await import('@remotion/renderer');
+
+    // 1. Bundle Remotion 项目
+    const bundleLocation = await bundle({
+      entryPoint: path.join(process.cwd(), 'src/remotion/index.ts'),
+      webpackOverride: (config) => config,
+    });
+
+    // 2. 选择 composition
+    const composition = await selectComposition({
+      serveUrl: bundleLocation,
+      id: 'VideoComposition',
+      inputProps: {},
+    });
+
+    // 3. 渲染 GIF
+    await renderMedia({
+      composition,
+      serveUrl: bundleLocation,
+      codec: 'gif',
+      outputLocation: options.outputPath,
+      inputProps: {},
+      overwrite: true,
+      onProgress: ({ progress }) => {
+        const percentage = Math.round(progress * 100);
+        options.onProgress?.(percentage);
       },
-      (error) => {
-        options.onError?.(error);
-        reject(error);
-      }
-    );
-  });
+    });
+
+    console.log(`[导出] GIF 导出完成: ${options.outputPath}`);
+    options.onComplete?.(options.outputPath);
+    return options.outputPath;
+  } catch (error) {
+    console.error(`[导出] GIF 导出失败:`, error);
+    options.onError?.(error as Error);
+    throw error;
+  }
 }
 
 /**
@@ -141,30 +171,48 @@ export async function exportToWebM(options: ExportOptions): Promise<string> {
   const outputDir = path.dirname(options.outputPath);
   await fs.mkdir(outputDir, { recursive: true });
 
-  const config: ExportConfig = {
-    compositionId: 'VideoComposition',
-    outputLocation: options.outputPath,
-    codec: 'vp9',
-    quality: options.quality === 'high' ? 100 : options.quality === 'medium' ? 75 : 50,
-    overwrite: true,
-    logLevel: 'info',
-    env: process.env as any,
-  };
+  console.log(`[导出] 开始导出 WebM: ${options.outputPath}`);
 
-  return new Promise((resolve, reject) => {
-    simulateExport(
-      config,
-      (progress) => options.onProgress?.(progress),
-      (outputPath) => {
-        options.onComplete?.(outputPath);
-        resolve(outputPath);
+  try {
+    // 动态导入 Remotion 模块
+    const { bundle } = await import('@remotion/bundler');
+    const { renderMedia, selectComposition } = await import('@remotion/renderer');
+
+    // 1. Bundle Remotion 项目
+    const bundleLocation = await bundle({
+      entryPoint: path.join(process.cwd(), 'src/remotion/index.ts'),
+      webpackOverride: (config) => config,
+    });
+
+    // 2. 选择 composition
+    const composition = await selectComposition({
+      serveUrl: bundleLocation,
+      id: 'VideoComposition',
+      inputProps: {},
+    });
+
+    // 3. 渲染 WebM
+    await renderMedia({
+      composition,
+      serveUrl: bundleLocation,
+      codec: 'vp8',
+      outputLocation: options.outputPath,
+      inputProps: {},
+      overwrite: true,
+      onProgress: ({ progress }) => {
+        const percentage = Math.round(progress * 100);
+        options.onProgress?.(percentage);
       },
-      (error) => {
-        options.onError?.(error);
-        reject(error);
-      }
-    );
-  });
+    });
+
+    console.log(`[导出] WebM 导出完成: ${options.outputPath}`);
+    options.onComplete?.(options.outputPath);
+    return options.outputPath;
+  } catch (error) {
+    console.error(`[导出] WebM 导出失败:`, error);
+    options.onError?.(error as Error);
+    throw error;
+  }
 }
 
 /**
@@ -198,9 +246,9 @@ export async function exportToPNGSequence(options: ExportOptions): Promise<strin
 }
 
 /**
- * 模拟导出过程（用于测试）
+ * 模拟导出过程（用于测试，保留以便测试使用）
  */
-function simulateExport(
+export function simulateExport(
   config: ExportConfig,
   onProgress: (progress: number) => void,
   onComplete: (outputPath: string) => void,

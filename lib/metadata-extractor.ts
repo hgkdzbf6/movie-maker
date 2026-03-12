@@ -1,6 +1,5 @@
 /**
- * Asset Metadata Extractor
- * Extracts metadata from video, audio, and image files using Web APIs
+ * Metadata extraction utilities for video, audio, and image files
  */
 
 export interface VideoMetadata {
@@ -20,10 +19,10 @@ export interface ImageMetadata {
   height: number;
 }
 
-export type AssetMetadata = VideoMetadata | AudioMetadata | ImageMetadata;
+export type AssetMetadata = Partial<VideoMetadata & AudioMetadata & ImageMetadata>;
 
 /**
- * Extract metadata from video files
+ * Extract video metadata using HTML5 video element
  */
 export async function extractVideoMetadata(file: File): Promise<VideoMetadata> {
   return new Promise((resolve, reject) => {
@@ -49,11 +48,17 @@ export async function extractVideoMetadata(file: File): Promise<VideoMetadata> {
 }
 
 /**
- * Extract metadata from audio files
+ * Extract audio metadata using Web Audio API
  */
 export async function extractAudioMetadata(file: File): Promise<AudioMetadata> {
   const arrayBuffer = await file.arrayBuffer();
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+
+  if (!AudioContextCtor) {
+    throw new Error('Web Audio API not supported');
+  }
+
+  const audioContext = new AudioContextCtor();
 
   try {
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -64,13 +69,12 @@ export async function extractAudioMetadata(file: File): Promise<AudioMetadata> {
       numberOfChannels: audioBuffer.numberOfChannels,
     };
   } finally {
-    // Close audio context to free resources
     await audioContext.close();
   }
 }
 
 /**
- * Extract metadata from image files
+ * Extract image metadata using HTML5 image element
  */
 export async function extractImageMetadata(file: File): Promise<ImageMetadata> {
   return new Promise((resolve, reject) => {
@@ -94,12 +98,12 @@ export async function extractImageMetadata(file: File): Promise<ImageMetadata> {
 }
 
 /**
- * Extract metadata from any asset file
+ * Extract metadata from any asset type
  */
 export async function extractAssetMetadata(
   file: File,
   type: 'video' | 'audio' | 'image'
-): Promise<Partial<VideoMetadata & AudioMetadata & ImageMetadata>> {
+): Promise<AssetMetadata> {
   try {
     switch (type) {
       case 'video':
@@ -109,7 +113,7 @@ export async function extractAssetMetadata(
       case 'image':
         return await extractImageMetadata(file);
       default:
-        throw new Error(`Unsupported asset type: ${type}`);
+        throw new Error('Unsupported asset type');
     }
   } catch (error) {
     console.error(`Failed to extract ${type} metadata:`, error);

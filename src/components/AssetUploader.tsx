@@ -2,7 +2,6 @@
 
 import { useState, useRef } from 'react';
 import { Upload, FileVideo, FileImage, Music } from 'lucide-react';
-import { extractAssetMetadata } from '@/lib/metadata-extractor';
 
 export interface AssetFile {
   id: string;
@@ -46,9 +45,6 @@ export const AssetUploader: React.FC<AssetUploaderProps> = ({
         continue;
       }
 
-      // Create object URL
-      const url = URL.createObjectURL(file);
-
       // Determine file type
       let type: 'video' | 'image' | 'audio' = 'image';
       if (file.type.startsWith('video/')) {
@@ -57,31 +53,55 @@ export const AssetUploader: React.FC<AssetUploaderProps> = ({
         type = 'audio';
       }
 
-      // Extract metadata
-      let metadata: Partial<AssetFile> = {};
       try {
-        const extracted = await extractAssetMetadata(file, type);
-        metadata = extracted;
-      } catch (error) {
-        console.error(`Failed to extract metadata for ${file.name}:`, error);
-        // Use default values as fallback
-        if (type === 'video') {
-          metadata = { duration: 5, width: 1920, height: 1080 };
-        } else if (type === 'audio') {
-          metadata = { duration: 5 };
-        } else if (type === 'image') {
-          metadata = { width: 1920, height: 1080 };
-        }
-      }
+        // Upload file to server for persistent storage
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('projectId', 'default'); // TODO: Use actual project ID
+        formData.append('type', type);
 
-      uploadedFiles.push({
-        id: Date.now().toString() + i,
-        name: file.name,
-        type,
-        url,
-        size: file.size,
-        ...metadata,
-      });
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Upload failed');
+        }
+
+        const data = await response.json();
+        const { asset } = data;
+
+        // Extract metadata on client side (for browser APIs)
+        const { extractAssetMetadata } = await import('@/lib/metadata-extractor');
+        let metadata: Record<string, unknown> = {};
+
+        try {
+          metadata = await extractAssetMetadata(file, type);
+        } catch (error) {
+          console.warn('Failed to extract metadata:', error);
+          // Use default metadata
+          if (type === 'video') {
+            metadata = { duration: 5, width: 1920, height: 1080 };
+          } else if (type === 'audio') {
+            metadata = { duration: 5 };
+          } else if (type === 'image') {
+            metadata = { width: 1920, height: 1080 };
+          }
+        }
+
+        uploadedFiles.push({
+          id: asset.id,
+          name: asset.name,
+          type: asset.type,
+          url: asset.url,
+          size: asset.size,
+          ...metadata,
+        });
+      } catch (error) {
+        console.error('Failed to upload file:', error);
+        alert(`上传文件 ${file.name} 失败`);
+      }
     }
 
     if (uploadedFiles.length > 0) {

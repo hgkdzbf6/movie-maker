@@ -167,16 +167,20 @@ export const Timeline: React.FC<TimelineProps> = ({
     keyframes,
     selectedKeyframeId,
     selectKeyframe,
+    trimSceneLeft,
+    trimSceneRight,
   } = useEditorStore();
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const [dragStartFrame, setDragStartFrame] = useState(0);
   const [isResizing, setIsResizing] = useState(false);
+  const [isTrimming, setIsTrimming] = useState(false);
   const [resizingSide, setResizingSide] = useState<'start' | 'end'>('start');
   const [resizingSceneId, setResizingSceneId] = useState<string | null>(null);
   const [resizingStartFrame, setResizingStartFrame] = useState(0);
   const [resizingDuration, setResizingDuration] = useState(0);
+  const [, setResizingTrimStart] = useState(0);
   const [dropPreview, setDropPreview] = useState<{ frame: number; trackId: string } | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -325,11 +329,15 @@ export const Timeline: React.FC<TimelineProps> = ({
     const scene = scenes.find(s => s.id === sceneId);
     if (!scene) return;
 
+    const trimMode = e.shiftKey;
+
     setIsResizing(true);
+    setIsTrimming(trimMode);
     setResizingSide(side);
     setResizingSceneId(sceneId);
     setResizingStartFrame(scene.startFrame);
     setResizingDuration(scene.durationFrames);
+    setResizingTrimStart(scene.trimStart || 0);
     setDragStartX(e.clientX);
     selectScene(sceneId);
   };
@@ -338,41 +346,58 @@ export const Timeline: React.FC<TimelineProps> = ({
   const handleResize = (e: React.MouseEvent) => {
     if (!isResizing || !resizingSceneId) return;
 
+    const scene = scenes.find(s => s.id === resizingSceneId);
+    if (!scene) return;
+
+    // const asset = assets.find(a => a.id === scene.content?.assetId);
+    // const maxSourceFrames = asset?.duration ? Math.floor(asset.duration * fps) : Infinity;
+
     const deltaX = e.clientX - dragStartX;
     const deltaFrames = Math.round(deltaX / pixelsPerFrame);
 
-    let newStartFrame = resizingStartFrame;
-    let newDurationFrames = resizingDuration;
-
-    if (resizingSide === 'start') {
-      // 调整开始帧
-      newStartFrame = Math.max(0, resizingStartFrame + deltaFrames);
-      const frameChange = newStartFrame - resizingStartFrame;
-      newDurationFrames = Math.max(30, resizingDuration - frameChange);
-    } else {
-      // 调整时长
-      newDurationFrames = Math.max(30, resizingDuration + deltaFrames);
-    }
-
-    // 应用吸附
-    if (snapEnabled && snapType !== 'none') {
-      if (snapType === 'frame') {
-        newDurationFrames = Math.round(newDurationFrames);
-      } else if (snapType === 'second') {
-        newDurationFrames = Math.round(newDurationFrames / fps) * fps;
+    if (isTrimming) {
+      // TRIM MODE: 使用 store 的 trim 方法
+      if (resizingSide === 'start') {
+        const newStartFrame = resizingStartFrame + deltaFrames;
+        trimSceneLeft(resizingSceneId, newStartFrame);
+      } else {
+        const newEndFrame = resizingStartFrame + resizingDuration + deltaFrames;
+        trimSceneRight(resizingSceneId, newEndFrame);
       }
-    }
+    } else {
+      // RESIZE MODE: 原有的调整时间轴位置逻辑
+      let newStartFrame = resizingStartFrame;
+      let newDurationFrames = resizingDuration;
 
-    // 更新场景
-    updateScene(resizingSceneId, {
-      startFrame: newStartFrame,
-      durationFrames: newDurationFrames,
-    });
+      if (resizingSide === 'start') {
+        newStartFrame = Math.max(0, resizingStartFrame + deltaFrames);
+        const frameChange = newStartFrame - resizingStartFrame;
+        newDurationFrames = Math.max(30, resizingDuration - frameChange);
+      } else {
+        newDurationFrames = Math.max(30, resizingDuration + deltaFrames);
+      }
+
+      // 应用吸附
+      if (snapEnabled && snapType !== 'none') {
+        if (snapType === 'frame') {
+          newDurationFrames = Math.round(newDurationFrames);
+        } else if (snapType === 'second') {
+          newDurationFrames = Math.round(newDurationFrames / fps) * fps;
+        }
+      }
+
+      // 更新场景
+      updateScene(resizingSceneId, {
+        startFrame: newStartFrame,
+        durationFrames: newDurationFrames,
+      });
+    }
   };
 
   // 处理场景延伸结束
   const handleResizeEnd = () => {
     setIsResizing(false);
+    setIsTrimming(false);
     setResizingSceneId(null);
   };
 
@@ -672,13 +697,16 @@ export const Timeline: React.FC<TimelineProps> = ({
                       ? assets.find((asset) => asset.id === scene.content?.assetId)
                       : undefined;
                     const audioBarCount = Math.max(12, Math.min(72, Math.floor((scene.durationFrames * pixelsPerFrame) / 8)));
+                    const isMissing = sceneAsset?.missing || false;
 
                     return (
                       <div
                         key={scene.id}
                         data-scene-id={scene.id}
                         className={`absolute top-2 h-12 rounded transition-all flex items-center overflow-hidden border-2 ${
-                          scene.type === 'audio'
+                          isMissing
+                            ? 'border-red-500 bg-red-900/30'
+                            : scene.type === 'audio'
                             ? selectedSceneId === scene.id
                               ? 'border-emerald-400 bg-emerald-500/25 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] z-10'
                               : 'border-emerald-700/80 bg-emerald-500/15 hover:border-emerald-500/80'
@@ -697,35 +725,62 @@ export const Timeline: React.FC<TimelineProps> = ({
                           e.stopPropagation();
                           handleSceneDragStart(scene.id, e);
                         }}
-                        title={scene.name}
+                        title={isMissing ? `${scene.name} (素材缺失)` : scene.name}
                       >
                         {!track.locked && (
                           <div
-                            className="absolute left-0 top-0 bottom-0 w-1 bg-gray-500/50 hover:bg-blue-500 cursor-ew-resize z-20"
-                            style={{ width: '8px', left: '-4px' }}
+                            className="absolute left-0 top-0 bottom-0 w-2 bg-blue-500/0 hover:bg-blue-500/30 cursor-ew-resize z-20 transition-all group"
+                            style={{ width: '12px', left: '-6px' }}
                             onMouseDown={(e) => handleResizeStart(scene.id, 'start', e)}
                             onMouseMove={handleResize}
                             onMouseUp={handleResizeEnd}
                             onMouseLeave={handleResizeEnd}
-                          />
+                            title="拖拽调整位置 (Shift: 裁剪素材)"
+                          >
+                            <div className="absolute inset-y-2 left-2 w-1 bg-blue-400/60 group-hover:bg-blue-300 rounded transition-colors" />
+                            <div className="absolute inset-y-2 left-4 w-1 bg-blue-400/60 group-hover:bg-blue-300 rounded transition-colors" />
+                          </div>
                         )}
 
                         {!track.locked && (
                           <div
-                            className="absolute right-0 top-0 bottom-0 w-1 bg-gray-500/50 hover:bg-blue-500 cursor-ew-resize z-20"
-                            style={{ width: '8px', right: '-4px' }}
+                            className="absolute right-0 top-0 bottom-0 w-2 bg-blue-500/0 hover:bg-blue-500/30 cursor-ew-resize z-20 transition-all group"
+                            style={{ width: '12px', right: '-6px' }}
                             onMouseDown={(e) => handleResizeStart(scene.id, 'end', e)}
                             onMouseMove={handleResize}
                             onMouseUp={handleResizeEnd}
                             onMouseLeave={handleResizeEnd}
-                          />
+                            title="拖拽调整位置 (Shift: 裁剪素材)"
+                          >
+                            <div className="absolute inset-y-2 right-2 w-1 bg-blue-400/60 group-hover:bg-blue-300 rounded transition-colors" />
+                            <div className="absolute inset-y-2 right-4 w-1 bg-blue-400/60 group-hover:bg-blue-300 rounded transition-colors" />
+                          </div>
                         )}
 
                         {scene.type === 'audio' && <AudioWaveform asset={sceneAsset} bars={audioBarCount} />}
 
+                        {/* Trim duration tooltip */}
+                        {isResizing && resizingSceneId === scene.id && (
+                          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-3 py-1.5 rounded shadow-lg whitespace-nowrap z-30 border border-gray-700">
+                            {isTrimming ? (
+                              <>
+                                <div className="font-semibold text-blue-400">裁剪模式</div>
+                                <div>时长: {Math.floor(scene.durationFrames / fps)}s ({scene.durationFrames}f)</div>
+                                {scene.trimStart ? <div>偏移: {Math.floor(scene.trimStart / fps)}s ({scene.trimStart}f)</div> : null}
+                              </>
+                            ) : (
+                              <>
+                                <div className="font-semibold text-green-400">调整位置</div>
+                                <div>时长: {Math.floor(scene.durationFrames / fps)}s ({scene.durationFrames}f)</div>
+                              </>
+                            )}
+                          </div>
+                        )}
+
                         <div className="relative z-10 flex w-full items-center gap-2 px-2 pointer-events-none">
+                          {isMissing && <span className="text-xs">⚠️</span>}
                           {scene.type === 'audio' && <span className="text-xs">🎵</span>}
-                          <span className={`text-xs truncate ${scene.type === 'audio' ? 'text-emerald-50 font-medium' : 'text-gray-300'}`}>
+                          <span className={`text-xs truncate ${isMissing ? 'text-red-300 font-medium' : scene.type === 'audio' ? 'text-emerald-50 font-medium' : 'text-gray-300'}`}>
                             {scene.name}
                           </span>
                         </div>

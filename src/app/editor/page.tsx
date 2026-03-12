@@ -9,6 +9,7 @@ import { AssetUploader, AssetFile } from '@/components/AssetUploader';
 import { AssetList } from '@/components/AssetList';
 import { Timeline } from '@/components/Timeline';
 import { InspectorPanel } from '@/components/InspectorPanel';
+import { validateExport } from '@/lib/export-validator';
 
 export default function EditorPage() {
   const {
@@ -42,6 +43,12 @@ export default function EditorPage() {
   const [draggedAsset, setDraggedAsset] = useState<any>(null);
   const [isReordering, setIsReordering] = useState(false);
   const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
+
+  // 导出状态
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportId, setExportId] = useState<string | null>(null);
 
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(280);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(320);
@@ -385,6 +392,119 @@ export default function EditorPage() {
     setDraggedSceneIndex(null);
   };
 
+  const handleExport = async () => {
+    // 1. 导出前检查
+    const validation = validateExport({
+      scenes,
+      assets,
+      fps,
+    });
+
+    if (!validation.valid) {
+      const errorMessages = validation.errors.map(e => e.message).join('\n');
+      alert(`导出失败:\n\n${errorMessages}`);
+      return;
+    }
+
+    if (validation.warnings.length > 0) {
+      const warningMessages = validation.warnings.map(w => w.message).join('\n');
+      const confirmed = confirm(`检测到以下警告:\n\n${warningMessages}\n\n是否继续导出?`);
+      if (!confirmed) return;
+    }
+
+    // 2. 开始导出
+    setIsExporting(true);
+    setExportProgress(0);
+    setExportError(null);
+
+    try {
+      const { exportSettings } = useEditorStore.getState();
+
+      // 调用导出 API
+      const response = await fetch('/api/exports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer mock-token', // TODO: 使用真实 token
+        },
+        body: JSON.stringify({
+          projectId: 'mock-project-id', // TODO: 使用真实项目 ID
+          format: exportSettings.format,
+          quality: exportSettings.quality,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || '导出失败');
+      }
+
+      const exportTask = await response.json();
+      setExportId(exportTask.id);
+
+      // 3. 轮询导出进度
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch(`/api/exports/${exportTask.id}`);
+          if (!statusResponse.ok) {
+            clearInterval(pollInterval);
+            throw new Error('获取导出状态失败');
+          }
+
+          const status = await statusResponse.json();
+          setExportProgress(status.progress || 0);
+
+          if (status.status === 'completed') {
+            clearInterval(pollInterval);
+            setIsExporting(false);
+
+            // 4. 下载文件
+            const downloadUrl = `/api/downloads/${status.filename}`;
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = status.filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+
+            alert('导出完成！');
+          } else if (status.status === 'failed') {
+            clearInterval(pollInterval);
+            setIsExporting(false);
+            setExportError(status.error || '导出失败');
+            alert(`导出失败: ${status.error || '未知错误'}`);
+          }
+        } catch (error: any) {
+          clearInterval(pollInterval);
+          setIsExporting(false);
+          setExportError(error.message);
+          console.error('轮询导出状态失败:', error);
+        }
+      }, 1000);
+
+    } catch (error: any) {
+      setIsExporting(false);
+      setExportError(error.message);
+      alert(`导出失败: ${error.message}`);
+      console.error('导出失败:', error);
+    }
+  };
+
+  const handleCancelExport = async () => {
+    if (!exportId) return;
+
+    try {
+      await fetch(`/api/exports/${exportId}`, {
+        method: 'DELETE',
+      });
+      setIsExporting(false);
+      setExportProgress(0);
+      setExportId(null);
+    } catch (error) {
+      console.error('取消导出失败:', error);
+    }
+  };
+
   return (
     <div className="h-[100dvh] w-[100dvw] flex flex-col bg-gray-950 text-gray-100 overflow-hidden pb-[env(safe-area-inset-bottom)]">
       <input
@@ -467,12 +587,13 @@ export default function EditorPage() {
         {/* 右侧：导出 + 设置 + 用户 */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => alert('导出功能即将推出')}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white border-none rounded-lg cursor-pointer font-medium text-sm hover:bg-blue-700"
+            onClick={handleExport}
+            disabled={isExporting}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white border-none rounded-lg cursor-pointer font-medium text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ WebkitAppRegion: 'no-drag' } as any}
           >
             <Download size={16} />
-            <span>导出</span>
+            <span>{isExporting ? '导出中...' : '导出'}</span>
           </button>
           <div className="h-6 w-px bg-gray-700" />
           <button
@@ -930,6 +1051,41 @@ export default function EditorPage() {
           />
         </div>
       </div>
+
+      {/* 导出进度条 */}
+      {isExporting && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 p-4 z-50">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <div className="text-sm font-medium text-white">
+                  正在导出视频...
+                </div>
+                <div className="text-sm text-gray-400">
+                  {exportProgress}%
+                </div>
+              </div>
+              <button
+                onClick={handleCancelExport}
+                className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition"
+              >
+                取消
+              </button>
+            </div>
+            <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-blue-600 h-full transition-all duration-300"
+                style={{ width: `${exportProgress}%` }}
+              />
+            </div>
+            {exportError && (
+              <div className="mt-2 text-sm text-red-400">
+                {exportError}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 全屏退出按钮 */}
       {isFullscreen && (

@@ -25,6 +25,8 @@ export const VideoComposition: React.FC = () => {
         const asset = assets.find((item) => item.id === scene.content?.assetId);
         if (!asset) return null;
 
+        const trimStartFrames = scene.trimStart || 0;
+
         return (
           <Sequence key={scene.id} from={scene.startFrame} durationInFrames={scene.durationFrames}>
             <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
@@ -36,6 +38,7 @@ export const VideoComposition: React.FC = () => {
               ) : (
                 <Video
                   src={asset.url}
+                  startFrom={trimStartFrames}
                   muted
                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 />
@@ -49,9 +52,11 @@ export const VideoComposition: React.FC = () => {
         const asset = assets.find((item) => item.id === scene.content?.assetId);
         if (!asset) return null;
 
+        const trimStartFrames = scene.trimStart || 0;
+
         return (
           <Sequence key={scene.id} from={scene.startFrame} durationInFrames={scene.durationFrames}>
-            <Audio src={asset.url} />
+            <Audio src={asset.url} startFrom={trimStartFrames} />
           </Sequence>
         );
       })}
