@@ -20,7 +20,7 @@ export interface Scene {
   content?: {
     text?: string;
     assetId?: string;
-    animation?: any;
+    animation?: 'fadeIn' | 'flyIn' | 'typewriter' | 'none';
     x?: number;
     y?: number;
     width?: number;
@@ -39,6 +39,15 @@ export interface Scene {
     textAlign?: 'left' | 'center' | 'right';
     lineHeight?: number;
     letterSpacing?: number;
+    // 文本高级样式
+    strokeWidth?: number;
+    strokeColor?: string;
+    backgroundColor?: string;
+    backgroundOpacity?: number;
+    shadowColor?: string;
+    shadowBlur?: number;
+    shadowOffsetX?: number;
+    shadowOffsetY?: number;
   };
   isDragging?: boolean;
 }
@@ -199,6 +208,10 @@ interface EditorState {
   addTransition: (transition: Omit<Scene, 'id'>) => void;
   deleteTransition: (transitionId: string) => void;
   updateTransition: (transitionId: string, updates: Partial<Scene>) => void;
+
+  // 文本操作
+  addTextScene: (text: Omit<Scene, 'id'>) => void;
+  updateTextContent: (sceneId: string, content: Partial<Scene['content']>) => void;
 
   // Debug / Project file
   resetEditor: () => void;
@@ -774,6 +787,48 @@ export const useEditorStore = create<EditorState>()(
           ...track,
           scenes: track.scenes.map(scene =>
             scene.id === transitionId ? { ...scene, ...updates } : scene
+          ),
+        })),
+      })),
+
+      // 文本操作
+      addTextScene: (text) => set((state) => {
+        const newText = {
+          ...text,
+          id: `text-${Date.now()}`,
+          type: 'text' as const,
+        };
+
+        const newScenes = [...state.scenes, newText];
+
+        // 添加到第一个文本轨道，如果没有则添加到第一个视频轨道
+        let textAdded = false;
+        const newTracks = state.tracks.map(track => {
+          if (!textAdded && (track.type === 'text' || track.type === 'video')) {
+            textAdded = true;
+            return { ...track, scenes: [...track.scenes, newText] };
+          }
+          return track;
+        });
+
+        return {
+          scenes: newScenes,
+          tracks: newTracks,
+        };
+      }),
+
+      updateTextContent: (sceneId, content) => set((state) => ({
+        scenes: state.scenes.map(scene =>
+          scene.id === sceneId
+            ? { ...scene, content: { ...scene.content, ...content } }
+            : scene
+        ),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene =>
+            scene.id === sceneId
+              ? { ...scene, content: { ...scene.content, ...content } }
+              : scene
           ),
         })),
       })),

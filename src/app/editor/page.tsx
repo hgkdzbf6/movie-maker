@@ -10,6 +10,7 @@ import { AssetList } from '@/components/AssetList';
 import { Timeline } from '@/components/Timeline';
 import { InspectorPanel } from '@/components/InspectorPanel';
 import { TransitionPanel } from '@/components/TransitionPanel';
+import { TextEditorPanel } from '@/components/TextEditorPanel';
 import { validateExport } from '@/lib/export-validator';
 
 export default function EditorPage() {
@@ -1154,6 +1155,9 @@ export default function EditorPage() {
 
       {/* 转场库面板 */}
       <TransitionPanel />
+
+      {/* 文本编辑器面板 */}
+      <TextEditorPanel />
     </div>
   );
 }

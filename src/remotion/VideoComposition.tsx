@@ -3,6 +3,7 @@
 import { AbsoluteFill, Audio, Img, Sequence, Video } from 'remotion';
 import { useEditorStore } from '@/store/editor';
 import { Transition } from './Transition';
+import { TextScene } from './TextScene';
 
 export const VideoComposition: React.FC = () => {
   const { tracks, assets } = useEditorStore();
@@ -11,7 +12,7 @@ export const VideoComposition: React.FC = () => {
   const audioTrack = tracks.find((track) => track.type === 'audio');
 
   const visualScenes = (videoTrack?.scenes ?? [])
-    .filter((scene) => scene.type === 'image' || scene.type === 'video' || scene.type === 'transition')
+    .filter((scene) => scene.type === 'image' || scene.type === 'video' || scene.type === 'transition' || scene.type === 'text')
     .slice()
     .sort((a, b) => a.startFrame - b.startFrame);
 
@@ -34,6 +35,34 @@ export const VideoComposition: React.FC = () => {
               >
                 <AbsoluteFill style={{ backgroundColor: '#000' }} />
               </Transition>
+            </Sequence>
+          );
+        }
+
+        // 处理文本场景
+        if (scene.type === 'text') {
+          return (
+            <Sequence key={scene.id} from={scene.startFrame} durationInFrames={scene.durationFrames}>
+              <TextScene
+                text={scene.content?.text || ''}
+                fontFamily={scene.content?.fontFamily}
+                fontSize={scene.content?.fontSize}
+                fontWeight={scene.content?.fontWeight}
+                color={scene.content?.color}
+                textAlign={scene.content?.textAlign}
+                lineHeight={scene.content?.lineHeight}
+                letterSpacing={scene.content?.letterSpacing}
+                strokeWidth={scene.content?.strokeWidth}
+                strokeColor={scene.content?.strokeColor}
+                backgroundColor={scene.content?.backgroundColor}
+                backgroundOpacity={scene.content?.backgroundOpacity}
+                shadowColor={scene.content?.shadowColor}
+                shadowBlur={scene.content?.shadowBlur}
+                shadowOffsetX={scene.content?.shadowOffsetX}
+                shadowOffsetY={scene.content?.shadowOffsetY}
+                animation={scene.content?.animation}
+                durationInFrames={scene.durationFrames}
+              />
             </Sequence>
           );
         }
