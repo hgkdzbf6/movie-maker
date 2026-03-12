@@ -73,20 +73,73 @@ export const VideoComposition: React.FC = () => {
 
         const trimStartFrames = scene.trimStart || 0;
 
+        // 构建 CSS 滤镜字符串
+        const buildFilterStyle = () => {
+          if (!scene.videoEffects || scene.videoEffects.length === 0) return {};
+
+          const filters: string[] = [];
+
+          scene.videoEffects.forEach(effect => {
+            const intensity = effect.intensity;
+
+            switch (effect.type) {
+              case 'brightness':
+                // 0-100 映射到 0-2 (50 = 1 = 正常)
+                filters.push(`brightness(${intensity / 50})`);
+                break;
+              case 'contrast':
+                // 0-100 映射到 0-2 (50 = 1 = 正常)
+                filters.push(`contrast(${intensity / 50})`);
+                break;
+              case 'saturation':
+                // 0-100 映射到 0-2 (50 = 1 = 正常)
+                filters.push(`saturate(${intensity / 50})`);
+                break;
+              case 'hue':
+                // 0-100 映射到 0-360 度
+                filters.push(`hue-rotate(${(intensity / 100) * 360}deg)`);
+                break;
+              case 'blur':
+                // 0-100 映射到 0-20px
+                filters.push(`blur(${(intensity / 100) * 20}px)`);
+                break;
+              case 'grayscale':
+                // 0-100 映射到 0-1
+                filters.push(`grayscale(${intensity / 100})`);
+                break;
+              case 'sepia':
+                // 0-100 映射到 0-1
+                filters.push(`sepia(${intensity / 100})`);
+                break;
+              case 'sharpen':
+                // 锐化通过对比度和亮度微调实现
+                if (intensity > 0) {
+                  const sharpenAmount = 1 + (intensity / 100) * 0.5;
+                  filters.push(`contrast(${sharpenAmount})`);
+                }
+                break;
+            }
+          });
+
+          return filters.length > 0 ? { filter: filters.join(' ') } : {};
+        };
+
+        const filterStyle = buildFilterStyle();
+
         return (
           <Sequence key={scene.id} from={scene.startFrame} durationInFrames={scene.durationFrames}>
             <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
               {scene.type === 'image' ? (
                 <Img
                   src={asset.url}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', ...filterStyle }}
                 />
               ) : (
                 <Video
                   src={asset.url}
                   startFrom={trimStartFrames}
                   muted
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', ...filterStyle }}
                 />
               )}
             </AbsoluteFill>

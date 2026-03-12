@@ -17,6 +17,11 @@ export interface Scene {
   trimStart?: number;
   transitionType?: 'fade' | 'crossDissolve' | 'push' | 'zoom' | 'wipe';
   transitionDirection?: 'left' | 'right' | 'up' | 'down';
+  // 视频特效
+  videoEffects?: Array<{
+    type: 'brightness' | 'contrast' | 'saturation' | 'hue' | 'blur' | 'sharpen' | 'grayscale' | 'sepia';
+    intensity: number; // 0-100
+  }>;
   // 音频控制
   volume?: number; // 基础音量 (0-1)
   fadeInDuration?: number; // 淡入时长（帧数）
@@ -226,6 +231,12 @@ interface EditorState {
   removeVolumeKeyframe: (sceneId: string, frame: number) => void;
   updateVolumeKeyframe: (sceneId: string, oldFrame: number, newFrame: number, volume: number) => void;
   setAudioEffect: (sceneId: string, effect: Scene['audioEffect']) => void;
+
+  // 视频特效操作
+  addVideoEffect: (sceneId: string, effect: { type: Scene['videoEffects'][0]['type']; intensity: number }) => void;
+  removeVideoEffect: (sceneId: string, effectType: Scene['videoEffects'][0]['type']) => void;
+  updateVideoEffect: (sceneId: string, effectType: Scene['videoEffects'][0]['type'], intensity: number) => void;
+  clearVideoEffects: (sceneId: string) => void;
 
   // Debug / Project file
   resetEditor: () => void;
@@ -956,6 +967,80 @@ export const useEditorStore = create<EditorState>()(
           ...track,
           scenes: track.scenes.map(scene =>
             scene.id === sceneId ? { ...scene, audioEffect: effect } : scene
+          ),
+        })),
+      })),
+
+      // 视频特效操作
+      addVideoEffect: (sceneId, effect) => set((state) => ({
+        scenes: state.scenes.map(scene => {
+          if (scene.id !== sceneId) return scene;
+          const effects = scene.videoEffects || [];
+          // 检查是否已存在该类型特效
+          if (effects.some(e => e.type === effect.type)) return scene;
+          return { ...scene, videoEffects: [...effects, effect] };
+        }),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene => {
+            if (scene.id !== sceneId) return scene;
+            const effects = scene.videoEffects || [];
+            if (effects.some(e => e.type === effect.type)) return scene;
+            return { ...scene, videoEffects: [...effects, effect] };
+          }),
+        })),
+      })),
+
+      removeVideoEffect: (sceneId, effectType) => set((state) => ({
+        scenes: state.scenes.map(scene =>
+          scene.id === sceneId
+            ? { ...scene, videoEffects: (scene.videoEffects || []).filter(e => e.type !== effectType) }
+            : scene
+        ),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene =>
+            scene.id === sceneId
+              ? { ...scene, videoEffects: (scene.videoEffects || []).filter(e => e.type !== effectType) }
+              : scene
+          ),
+        })),
+      })),
+
+      updateVideoEffect: (sceneId, effectType, intensity) => set((state) => ({
+        scenes: state.scenes.map(scene =>
+          scene.id === sceneId
+            ? {
+                ...scene,
+                videoEffects: (scene.videoEffects || []).map(e =>
+                  e.type === effectType ? { ...e, intensity } : e
+                ),
+              }
+            : scene
+        ),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene =>
+            scene.id === sceneId
+              ? {
+                  ...scene,
+                  videoEffects: (scene.videoEffects || []).map(e =>
+                    e.type === effectType ? { ...e, intensity } : e
+                  ),
+                }
+              : scene
+          ),
+        })),
+      })),
+
+      clearVideoEffects: (sceneId) => set((state) => ({
+        scenes: state.scenes.map(scene =>
+          scene.id === sceneId ? { ...scene, videoEffects: [] } : scene
+        ),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene =>
+            scene.id === sceneId ? { ...scene, videoEffects: [] } : scene
           ),
         })),
       })),

@@ -12,6 +12,7 @@ import { InspectorPanel } from '@/components/InspectorPanel';
 import { TransitionPanel } from '@/components/TransitionPanel';
 import { TextEditorPanel } from '@/components/TextEditorPanel';
 import { AudioControlPanel } from '@/components/AudioControlPanel';
+import { VideoEffectPanel } from '@/components/VideoEffectPanel';
 import { ShortcutHelpPanel } from '@/components/ShortcutHelpPanel';
 import { useEditorShortcuts } from '@/hooks/useEditorShortcuts';
 import { validateExport } from '@/lib/export-validator';
@@ -47,7 +48,7 @@ export default function EditorPage() {
   // 注册快捷键
   useEditorShortcuts();
 
-  const [activePanel, setActivePanel] = useState<'timeline' | 'assets' | 'inspector'>('timeline');
+  const [rightPanelTab, setRightPanelTab] = useState<'inspector' | 'effects'>('inspector');
   const [, setAssetFiles] = useState<AssetFile[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeTab, setActiveTab] = useState<'assets' | 'project' | 'export'>('assets');
@@ -1065,20 +1066,31 @@ export default function EditorPage() {
           {/* 属性面板标签 */}
           <div className="flex border-b border-gray-800">
             <button
-              onClick={() => setActivePanel('inspector')}
+              onClick={() => setRightPanelTab('inspector')}
               className={`flex-1 px-4 py-3 text-sm font-medium cursor-pointer border-none border-b-2 transition-all duration-200 ${
-                activePanel === 'inspector'
+                rightPanelTab === 'inspector'
                   ? 'text-blue-500 border-blue-500'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
               }`}
             >
               属性
             </button>
+            <button
+              onClick={() => setRightPanelTab('effects')}
+              className={`flex-1 px-4 py-3 text-sm font-medium cursor-pointer border-none border-b-2 transition-all duration-200 ${
+                rightPanelTab === 'effects'
+                  ? 'text-purple-500 border-purple-500'
+                  : 'text-gray-400 border-transparent hover:text-gray-300'
+              }`}
+            >
+              特效
+            </button>
           </div>
 
           {/* 属性面板内容 */}
           <div className="flex-1 overflow-y-auto">
-            <InspectorPanel scene={selectedScene || null} />
+            {rightPanelTab === 'inspector' && <InspectorPanel scene={selectedScene || null} />}
+            {rightPanelTab === 'effects' && <VideoEffectPanel />}
           </div>
         </div>
       </div>
