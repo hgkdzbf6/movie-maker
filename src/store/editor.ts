@@ -108,6 +108,14 @@ export interface Track {
   volume?: number;
 }
 
+// 历史记录状态快照
+interface HistorySnapshot {
+  scenes: Scene[];
+  tracks: Track[];
+  assets: Asset[];
+  selectedSceneId: string | null;
+}
+
 interface EditorState {
   project: Project | null;
   scenes: Scene[];
@@ -133,6 +141,11 @@ interface EditorState {
   snapType: 'none' | 'keyframe' | 'track' | 'frame' | 'second';
   keyframes: Keyframe[];
   selectedKeyframeId: string | null;
+
+  // 撤销/重做状态
+  history: HistorySnapshot[];
+  historyIndex: number;
+  maxHistorySize: number;
 
   // Actions
   setProject: (project: Project) => void;
@@ -181,6 +194,12 @@ interface EditorState {
   resetEditor: () => void;
   exportProjectFile: () => EditorProjectFile;
   loadProjectFile: (file: EditorProjectFile) => void;
+
+  // 撤销/重做操作
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 }
 
 export type EditorProjectFile = {
@@ -247,32 +266,85 @@ export const useEditorStore = create<EditorState>()(
       keyframes: [],
       selectedKeyframeId: null,
 
+      // 撤销/重做状态
+      history: [],
+      historyIndex: -1,
+      maxHistorySize: 50,
+
       setProject: (project) => set({ project }),
 
       addScene: (scene) => set((state) => {
         const targetTrackType = scene.type === 'audio' ? 'audio' : scene.type === 'text' ? 'text' : 'video';
 
+        const newScenes = [...state.scenes, scene];
+        const newTracks = state.tracks.map(track =>
+          track.type === targetTrackType
+            ? { ...track, scenes: [...track.scenes, scene] }
+            : track
+        );
+
+        // 清除 redo 历史并保存当前状态
+        const newHistory = [...state.history.slice(0, state.historyIndex + 1)];
+
+        // 如果这是第一个操作，保存初始状态
+        if (newHistory.length === 0) {
+          newHistory.push({
+            scenes: state.scenes,
+            tracks: state.tracks,
+            assets: state.assets,
+            selectedSceneId: state.selectedSceneId,
+          });
+        }
+
+        // 保存新状态（操作后）
+        newHistory.push({
+          scenes: newScenes,
+          tracks: newTracks,
+          assets: state.assets,
+          selectedSceneId: state.selectedSceneId,
+        });
+
+        // 限制历史记录大小
+        while (newHistory.length > state.maxHistorySize) {
+          newHistory.shift();
+        }
+
         return {
-          scenes: [...state.scenes, scene],
-          tracks: state.tracks.map(track =>
-            track.type === targetTrackType
-              ? { ...track, scenes: [...track.scenes, scene] }
-              : track
-          ),
+          scenes: newScenes,
+          tracks: newTracks,
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
         };
       }),
 
-      updateScene: (id, updates) => set((state) => ({
-        scenes: state.scenes.map(scene =>
-          scene.id === id ? { ...scene, ...updates } : scene
-        ),
-        tracks: state.tracks.map(track => ({
-          ...track,
-          scenes: track.scenes.map(scene =>
+      updateScene: (id, updates) => set((state) => {
+        // 保存历史记录
+        const snapshot: HistorySnapshot = {
+          scenes: state.scenes,
+          tracks: state.tracks,
+          assets: state.assets,
+          selectedSceneId: state.selectedSceneId,
+        };
+        const newHistory = state.history.slice(0, state.historyIndex + 1);
+        newHistory.push(snapshot);
+        if (newHistory.length > state.maxHistorySize) {
+          newHistory.shift();
+        }
+
+        return {
+          scenes: state.scenes.map(scene =>
             scene.id === id ? { ...scene, ...updates } : scene
           ),
-        })),
-      })),
+          tracks: state.tracks.map(track => ({
+            ...track,
+            scenes: track.scenes.map(scene =>
+              scene.id === id ? { ...scene, ...updates } : scene
+            ),
+          })),
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
+        };
+      }),
 
       updateScenePosition: (sceneId, newStartFrame) => set((state) => {
         // 应用吸附
@@ -301,6 +373,19 @@ export const useEditorStore = create<EditorState>()(
       setDraggedScene: (scene) => set({ draggedScene: scene }),
 
       deleteScene: (id) => set((state) => {
+        // 保存历史记录
+        const snapshot: HistorySnapshot = {
+          scenes: state.scenes,
+          tracks: state.tracks,
+          assets: state.assets,
+          selectedSceneId: state.selectedSceneId,
+        };
+        const newHistory = state.history.slice(0, state.historyIndex + 1);
+        newHistory.push(snapshot);
+        if (newHistory.length > state.maxHistorySize) {
+          newHistory.shift();
+        }
+
         const sceneIndex = state.scenes.findIndex(s => s.id === id);
         const isSelected = state.selectedSceneId === id;
 
@@ -312,7 +397,9 @@ export const useEditorStore = create<EditorState>()(
           })),
           selectedSceneId: isSelected
             ? (sceneIndex > 0 ? state.scenes[sceneIndex - 1].id : null)
-            : state.selectedSceneId
+            : state.selectedSceneId,
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
         };
       }),
 
@@ -339,6 +426,19 @@ export const useEditorStore = create<EditorState>()(
       }),
 
       splitScene: (id, frame) => set((state) => {
+        // 保存历史记录
+        const snapshot: HistorySnapshot = {
+          scenes: state.scenes,
+          tracks: state.tracks,
+          assets: state.assets,
+          selectedSceneId: state.selectedSceneId,
+        };
+        const newHistory = state.history.slice(0, state.historyIndex + 1);
+        newHistory.push(snapshot);
+        if (newHistory.length > state.maxHistorySize) {
+          newHistory.shift();
+        }
+
         const scene = state.scenes.find(s => s.id === id);
         if (!scene) return state;
 
@@ -376,6 +476,8 @@ export const useEditorStore = create<EditorState>()(
               ],
             };
           }),
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
         };
       }),
 
@@ -619,8 +721,52 @@ export const useEditorStore = create<EditorState>()(
           selectedTrackId: null,
           keyframes: [],
           selectedKeyframeId: null,
+          history: [],
+          historyIndex: -1,
         };
       }),
+
+      // 撤销操作
+      undo: () => set((state) => {
+        if (state.historyIndex <= 0) return state;
+
+        const snapshot = state.history[state.historyIndex - 1];
+        return {
+          scenes: snapshot.scenes,
+          tracks: snapshot.tracks,
+          assets: snapshot.assets,
+          selectedSceneId: snapshot.selectedSceneId,
+          historyIndex: state.historyIndex - 1,
+          history: state.history,
+        };
+      }),
+
+      // 重做操作
+      redo: () => set((state) => {
+        if (state.historyIndex >= state.history.length - 1) return state;
+
+        const snapshot = state.history[state.historyIndex + 1];
+        return {
+          scenes: snapshot.scenes,
+          tracks: snapshot.tracks,
+          assets: snapshot.assets,
+          selectedSceneId: snapshot.selectedSceneId,
+          historyIndex: state.historyIndex + 1,
+          history: state.history,
+        };
+      }),
+
+      // 检查是否可以撤销
+      canUndo: () => {
+        const state = useEditorStore.getState();
+        return state.historyIndex > 0;
+      },
+
+      // 检查是否可以重做
+      canRedo: () => {
+        const state = useEditorStore.getState();
+        return state.historyIndex < state.history.length - 1;
+      },
     }),
     {
       name: 'editor-storage',

@@ -33,6 +33,10 @@ export default function EditorPage() {
     resetEditor,
     exportProjectFile,
     loadProjectFile,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useEditorStore();
 
   const [activePanel, setActivePanel] = useState<'timeline' | 'assets' | 'inspector'>('timeline');
@@ -505,6 +509,36 @@ export default function EditorPage() {
     }
   };
 
+  // 快捷键支持
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + Z: 撤销
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo()) {
+          undo();
+        }
+      }
+      // Cmd/Ctrl + Shift + Z: 重做
+      else if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        if (canRedo()) {
+          redo();
+        }
+      }
+      // Cmd/Ctrl + Y: 重做（Windows 风格）
+      else if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault();
+        if (canRedo()) {
+          redo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, canUndo, canRedo]);
+
   return (
     <div className="h-[100dvh] w-[100dvw] flex flex-col bg-gray-950 text-gray-100 overflow-hidden pb-[env(safe-area-inset-bottom)]">
       <input
@@ -557,10 +591,30 @@ export default function EditorPage() {
             >
               <Upload size={18} />
             </button>
-            <button className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-gray-800" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <button
+              className={`p-1.5 bg-transparent border-none rounded cursor-pointer transition ${
+                canUndo()
+                  ? 'text-gray-400 hover:bg-gray-800'
+                  : 'text-gray-600 cursor-not-allowed'
+              }`}
+              style={{ WebkitAppRegion: 'no-drag' } as any}
+              title="撤销 (Ctrl/Cmd+Z)"
+              onClick={undo}
+              disabled={!canUndo()}
+            >
               <Undo size={18} />
             </button>
-            <button className="p-1.5 bg-transparent border-none rounded cursor-pointer text-gray-400 hover:bg-gray-800" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <button
+              className={`p-1.5 bg-transparent border-none rounded cursor-pointer transition ${
+                canRedo()
+                  ? 'text-gray-400 hover:bg-gray-800'
+                  : 'text-gray-600 cursor-not-allowed'
+              }`}
+              style={{ WebkitAppRegion: 'no-drag' } as any}
+              title="重做 (Ctrl/Cmd+Shift+Z)"
+              onClick={redo}
+              disabled={!canRedo()}
+            >
               <Redo size={18} />
             </button>
             <div className="h-6 w-px bg-gray-700" />
