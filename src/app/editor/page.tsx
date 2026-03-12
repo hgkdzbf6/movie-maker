@@ -9,6 +9,7 @@ import { AssetUploader, AssetFile } from '@/components/AssetUploader';
 import { AssetList } from '@/components/AssetList';
 import { Timeline } from '@/components/Timeline';
 import { InspectorPanel } from '@/components/InspectorPanel';
+import { TransitionPanel } from '@/components/TransitionPanel';
 import { validateExport } from '@/lib/export-validator';
 
 export default function EditorPage() {
@@ -1150,6 +1151,9 @@ export default function EditorPage() {
           退出全屏
         </button>
       )}
+
+      {/* 转场库面板 */}
+      <TransitionPanel />
     </div>
   );
 }

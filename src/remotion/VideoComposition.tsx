@@ -2,6 +2,7 @@
 
 import { AbsoluteFill, Audio, Img, Sequence, Video } from 'remotion';
 import { useEditorStore } from '@/store/editor';
+import { Transition } from './Transition';
 
 export const VideoComposition: React.FC = () => {
   const { tracks, assets } = useEditorStore();
@@ -10,7 +11,7 @@ export const VideoComposition: React.FC = () => {
   const audioTrack = tracks.find((track) => track.type === 'audio');
 
   const visualScenes = (videoTrack?.scenes ?? [])
-    .filter((scene) => scene.type === 'image' || scene.type === 'video')
+    .filter((scene) => scene.type === 'image' || scene.type === 'video' || scene.type === 'transition')
     .slice()
     .sort((a, b) => a.startFrame - b.startFrame);
 
@@ -22,6 +23,22 @@ export const VideoComposition: React.FC = () => {
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
       {visualScenes.map((scene) => {
+        // 处理转场
+        if (scene.type === 'transition') {
+          return (
+            <Sequence key={scene.id} from={scene.startFrame} durationInFrames={scene.durationFrames}>
+              <Transition
+                type={scene.transitionType || 'fade'}
+                direction={scene.transitionDirection}
+                durationInFrames={scene.durationFrames}
+              >
+                <AbsoluteFill style={{ backgroundColor: '#000' }} />
+              </Transition>
+            </Sequence>
+          );
+        }
+
+        // 处理普通场景
         const asset = assets.find((item) => item.id === scene.content?.assetId);
         if (!asset) return null;
 

@@ -15,6 +15,8 @@ export interface Scene {
   startFrame: number;
   durationFrames: number;
   trimStart?: number;
+  transitionType?: 'fade' | 'crossDissolve' | 'push' | 'zoom' | 'wipe';
+  transitionDirection?: 'left' | 'right' | 'up' | 'down';
   content?: {
     text?: string;
     assetId?: string;
@@ -192,6 +194,11 @@ interface EditorState {
   deleteKeyframe: (keyframeId: string) => void;
   updateKeyframe: (keyframeId: string, updates: Partial<Keyframe>) => void;
   selectKeyframe: (keyframeId: string | null) => void;
+
+  // 转场操作
+  addTransition: (transition: Omit<Scene, 'id'>) => void;
+  deleteTransition: (transitionId: string) => void;
+  updateTransition: (transitionId: string, updates: Partial<Scene>) => void;
 
   // Debug / Project file
   resetEditor: () => void;
@@ -724,6 +731,52 @@ export const useEditorStore = create<EditorState>()(
       })),
 
       selectKeyframe: (keyframeId) => set({ selectedKeyframeId: keyframeId }),
+
+      // 转场操作
+      addTransition: (transition) => set((state) => {
+        const newTransition = {
+          ...transition,
+          id: `transition-${Date.now()}`,
+          type: 'transition' as const,
+        };
+
+        const newScenes = [...state.scenes, newTransition];
+
+        // 添加到第一个视频轨道
+        let transitionAdded = false;
+        const newTracks = state.tracks.map(track => {
+          if (!transitionAdded && track.type === 'video') {
+            transitionAdded = true;
+            return { ...track, scenes: [...track.scenes, newTransition] };
+          }
+          return track;
+        });
+
+        return {
+          scenes: newScenes,
+          tracks: newTracks,
+        };
+      }),
+
+      deleteTransition: (transitionId) => set((state) => ({
+        scenes: state.scenes.filter(scene => scene.id !== transitionId),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.filter(scene => scene.id !== transitionId),
+        })),
+      })),
+
+      updateTransition: (transitionId, updates) => set((state) => ({
+        scenes: state.scenes.map(scene =>
+          scene.id === transitionId ? { ...scene, ...updates } : scene
+        ),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene =>
+            scene.id === transitionId ? { ...scene, ...updates } : scene
+          ),
+        })),
+      })),
 
       resetEditor: () => set(() => ({
         project: null,
