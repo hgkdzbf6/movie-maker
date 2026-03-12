@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useEditorStore } from '@/store/editor';
 import type { Asset, Track } from '@/store/editor';
-import { Plus, Scissors, Clock, Layers, Eye, EyeOff, Lock, Unlock } from 'lucide-react';
+import { Plus, Scissors, Clock, Layers, Eye, EyeOff, Lock, Unlock, Trash2, Edit2 } from 'lucide-react';
 
 const audioWaveformCache = new Map<string, number[]>();
 
@@ -161,6 +161,10 @@ export const Timeline: React.FC<TimelineProps> = ({
     selectTrack,
     toggleTrackVisibility,
     toggleTrackLock,
+    addTrack,
+    deleteTrack,
+    renameTrack,
+    setTrackHeight,
     timelineZoom,
     snapEnabled,
     snapType,
@@ -183,6 +187,11 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [, setResizingTrimStart] = useState(0);
   const [dropPreview, setDropPreview] = useState<{ frame: number; trackId: string } | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const [editingTrackName, setEditingTrackName] = useState('');
+  const [resizingTrackId, setResizingTrackId] = useState<string | null>(null);
+  const [resizingTrackStartY, setResizingTrackStartY] = useState(0);
+  const [resizingTrackStartHeight, setResizingTrackStartHeight] = useState(0);
   const timelineRef = useRef<HTMLDivElement>(null);
 
   // 计算总帧数（按时间轴最大结束帧，而不是累加）
@@ -472,6 +481,91 @@ export const Timeline: React.FC<TimelineProps> = ({
     toggleTrackLock(trackId);
   };
 
+  // 添加轨道
+  const handleAddTrack = (type: 'video' | 'audio') => {
+    const trackCount = tracks.filter(t => t.type === type).length;
+    const newTrack = {
+      id: `track-${type}-${Date.now()}`,
+      name: `${type === 'video' ? 'Video' : 'Audio'} Track ${trackCount + 1}`,
+      type,
+      visible: true,
+      locked: false,
+      volume: type === 'audio' ? 1.0 : undefined,
+      height: 64,
+    };
+    addTrack(newTrack);
+  };
+
+  // 删除轨道
+  const handleDeleteTrack = (trackId: string) => {
+    const track = tracks.find(t => t.id === trackId);
+    if (!track) return;
+
+    const sceneCount = track.scenes.length;
+    const message = sceneCount > 0
+      ? `确定要删除轨道 "${track.name}" 吗？这将删除轨道上的 ${sceneCount} 个场景。`
+      : `确定要删除轨道 "${track.name}" 吗？`;
+
+    if (confirm(message)) {
+      deleteTrack(trackId);
+    }
+  };
+
+  // 开始重命名轨道
+  const handleStartRenameTrack = (trackId: string, currentName: string) => {
+    setEditingTrackId(trackId);
+    setEditingTrackName(currentName);
+  };
+
+  // 完成重命名轨道
+  const handleFinishRenameTrack = () => {
+    if (editingTrackId && editingTrackName.trim()) {
+      renameTrack(editingTrackId, editingTrackName.trim());
+    }
+    setEditingTrackId(null);
+    setEditingTrackName('');
+  };
+
+  // 取消重命名轨道
+  const handleCancelRenameTrack = () => {
+    setEditingTrackId(null);
+    setEditingTrackName('');
+  };
+
+  // 开始调整轨道高度
+  const handleStartResizeTrack = (trackId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    const track = tracks.find(t => t.id === trackId);
+    if (!track) return;
+
+    setResizingTrackId(trackId);
+    setResizingTrackStartY(e.clientY);
+    setResizingTrackStartHeight(track.height || 64);
+  };
+
+  // 处理轨道高度调整
+  useEffect(() => {
+    if (!resizingTrackId) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - resizingTrackStartY;
+      const newHeight = Math.max(60, Math.min(200, resizingTrackStartHeight + deltaY));
+      setTrackHeight(resizingTrackId, newHeight);
+    };
+
+    const handleMouseUp = () => {
+      setResizingTrackId(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingTrackId, resizingTrackStartY, resizingTrackStartHeight, setTrackHeight]);
+
   // 获取当前场景
   const currentScene = scenes.find(s => currentFrame >= s.startFrame && currentFrame < s.startFrame + s.durationFrames);
   const previewDurationFrames = Math.max(30, Math.round((draggedAssetDuration || 3) * fps));
@@ -494,6 +588,27 @@ export const Timeline: React.FC<TimelineProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* 轨道操作按钮 */}
+          <button
+            onClick={() => handleAddTrack('video')}
+            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded text-sm flex items-center gap-2 transition"
+            title="添加视频轨道"
+          >
+            <Plus size={14} />
+            <span>视频轨</span>
+          </button>
+
+          <button
+            onClick={() => handleAddTrack('audio')}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-sm flex items-center gap-2 transition"
+            title="添加音频轨道"
+          >
+            <Plus size={14} />
+            <span>音频轨</span>
+          </button>
+
+          <div className="w-px h-6 bg-gray-700" />
+
           {/* 场景操作按钮 */}
           <button
             onClick={handleSplitScene}
@@ -569,12 +684,43 @@ export const Timeline: React.FC<TimelineProps> = ({
                 </div>
 
                 {/* 轨道名称 */}
-                <span className="text-sm text-gray-300 truncate flex-1">
-                  {track.name}
-                </span>
+                {editingTrackId === track.id ? (
+                  <input
+                    type="text"
+                    value={editingTrackName}
+                    onChange={(e) => setEditingTrackName(e.target.value)}
+                    onBlur={handleFinishRenameTrack}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleFinishRenameTrack();
+                      } else if (e.key === 'Escape') {
+                        handleCancelRenameTrack();
+                      }
+                    }}
+                    autoFocus
+                    className="flex-1 px-2 py-1 text-sm bg-gray-800 text-gray-300 border border-blue-500 rounded focus:outline-none"
+                  />
+                ) : (
+                  <span
+                    className="text-sm text-gray-300 truncate flex-1 cursor-pointer hover:text-gray-100"
+                    onDoubleClick={() => handleStartRenameTrack(track.id, track.name)}
+                    title="双击重命名"
+                  >
+                    {track.name}
+                  </span>
+                )}
 
                 {/* 轨道操作按钮 */}
                 <div className="flex items-center gap-1">
+                  {/* 重命名按钮 */}
+                  <button
+                    onClick={() => handleStartRenameTrack(track.id, track.name)}
+                    className="p-1 hover:bg-gray-800 rounded transition"
+                    title="重命名"
+                  >
+                    <Edit2 size={14} className="text-gray-400" />
+                  </button>
+
                   {/* 可见性切换 */}
                   <button
                     onClick={() => handleToggleTrackVisibility(track.id)}
@@ -592,20 +738,33 @@ export const Timeline: React.FC<TimelineProps> = ({
                   >
                     {track.locked ? <Lock size={14} className="text-gray-400" /> : <Unlock size={14} className="text-gray-400" />}
                   </button>
+
+                  {/* 删除轨道按钮 */}
+                  {tracks.length > 1 && (
+                    <button
+                      onClick={() => handleDeleteTrack(track.id)}
+                      className="p-1 hover:bg-red-900/50 hover:text-red-400 rounded transition"
+                      title="删除轨道"
+                    >
+                      <Trash2 size={14} className="text-gray-400" />
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* 轨道内容 */}
-              <div
-                className={`h-16 relative border-l-2 bg-gray-800/50 ${
-                  selectedTrackId === track.id ? 'border-blue-500' : 'border-transparent'
-                } ${!track.visible ? 'opacity-30' : ''} ${dropPreview?.trackId === track.id ? 'bg-blue-500/10' : ''}`}
-                onClick={(e) => {
-                  if (e.currentTarget === e.target) {
-                    selectTrack(track.id);
-                    handleTimelineClick(e);
-                  }
-                }}
+              <div className="relative">
+                <div
+                  className={`relative border-l-2 bg-gray-800/50 ${
+                    selectedTrackId === track.id ? 'border-blue-500' : 'border-transparent'
+                  } ${!track.visible ? 'opacity-30' : ''} ${dropPreview?.trackId === track.id ? 'bg-blue-500/10' : ''}`}
+                  style={{ height: `${track.height || 64}px` }}
+                  onClick={(e) => {
+                    if (e.currentTarget === e.target) {
+                      selectTrack(track.id);
+                      handleTimelineClick(e);
+                    }
+                  }}
                 onDragOverCapture={(e) => {
                   if (!onAssetDrop) return;
 
@@ -837,6 +996,16 @@ export const Timeline: React.FC<TimelineProps> = ({
                       title="关键帧"
                     />
                   ))}
+                </div>
+
+                {/* 轨道高度调整手柄 */}
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-blue-500/50 transition-colors z-30 group"
+                  onMouseDown={(e) => handleStartResizeTrack(track.id, e)}
+                  title="拖拽调整轨道高度"
+                >
+                  <div className="absolute inset-x-0 bottom-0 h-0.5 bg-gray-700 group-hover:bg-blue-500 transition-colors" />
+                </div>
               </div>
             </div>
           ))}

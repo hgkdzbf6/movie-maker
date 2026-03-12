@@ -106,6 +106,7 @@ export interface Track {
   visible: boolean;
   locked: boolean;
   volume?: number;
+  height?: number; // 轨道高度（像素），默认 64px，范围 60-200
 }
 
 // 历史记录状态快照
@@ -181,6 +182,8 @@ interface EditorState {
   selectTrack: (trackId: string | null) => void;
   toggleTrackVisibility: (trackId: string) => void;
   toggleTrackLock: (trackId: string) => void;
+  renameTrack: (trackId: string, name: string) => void;
+  setTrackHeight: (trackId: string, height: number) => void;
   moveSceneToTrack: (sceneId: string, fromTrackId: string, toTrackId: string) => void;
   setTimelineZoom: (zoom: number) => void;
   setSnapEnabled: (enabled: boolean) => void;
@@ -213,7 +216,7 @@ export type EditorProjectFile = {
 
 const getInitialTracks = (): Track[] => [
   {
-    id: 'track-1',
+    id: 'track-video-1',
     name: 'Video Track 1',
     type: 'video',
     scenes: [],
@@ -221,8 +224,42 @@ const getInitialTracks = (): Track[] => [
     locked: false,
   },
   {
-    id: 'track-2',
+    id: 'track-video-2',
+    name: 'Video Track 2',
+    type: 'video',
+    scenes: [],
+    visible: true,
+    locked: false,
+  },
+  {
+    id: 'track-video-3',
+    name: 'Video Track 3',
+    type: 'video',
+    scenes: [],
+    visible: true,
+    locked: false,
+  },
+  {
+    id: 'track-audio-1',
     name: 'Audio Track 1',
+    type: 'audio',
+    scenes: [],
+    visible: true,
+    locked: false,
+    volume: 1.0,
+  },
+  {
+    id: 'track-audio-2',
+    name: 'Audio Track 2',
+    type: 'audio',
+    scenes: [],
+    visible: true,
+    locked: false,
+    volume: 1.0,
+  },
+  {
+    id: 'track-audio-3',
+    name: 'Audio Track 3',
     type: 'audio',
     scenes: [],
     visible: true,
@@ -277,11 +314,16 @@ export const useEditorStore = create<EditorState>()(
         const targetTrackType = scene.type === 'audio' ? 'audio' : scene.type === 'text' ? 'text' : 'video';
 
         const newScenes = [...state.scenes, scene];
-        const newTracks = state.tracks.map(track =>
-          track.type === targetTrackType
-            ? { ...track, scenes: [...track.scenes, scene] }
-            : track
-        );
+
+        // 只添加到第一个匹配类型的轨道
+        let sceneAdded = false;
+        const newTracks = state.tracks.map(track => {
+          if (!sceneAdded && track.type === targetTrackType) {
+            sceneAdded = true;
+            return { ...track, scenes: [...track.scenes, scene] };
+          }
+          return track;
+        });
 
         // 清除 redo 历史并保存当前状态
         const newHistory = [...state.history.slice(0, state.historyIndex + 1)];
@@ -593,9 +635,21 @@ export const useEditorStore = create<EditorState>()(
         tracks: [...state.tracks, { ...track, scenes: [] }],
       })),
 
-      deleteTrack: (trackId) => set((state) => ({
-        tracks: state.tracks.filter(track => track.id !== trackId),
-      })),
+      deleteTrack: (trackId) => set((state) => {
+        // 不允许删除最后一条轨道
+        if (state.tracks.length <= 1) return state;
+
+        // 删除轨道时，移除该轨道上的所有场景
+        const trackToDelete = state.tracks.find(t => t.id === trackId);
+        if (!trackToDelete) return state;
+
+        const sceneIdsToRemove = trackToDelete.scenes.map(s => s.id);
+
+        return {
+          tracks: state.tracks.filter(track => track.id !== trackId),
+          scenes: state.scenes.filter(scene => !sceneIdsToRemove.includes(scene.id)),
+        };
+      }),
 
       selectTrack: (trackId) => set({ selectedTrackId: trackId }),
 
@@ -611,6 +665,22 @@ export const useEditorStore = create<EditorState>()(
         tracks: state.tracks.map(track =>
           track.id === trackId
             ? { ...track, locked: !track.locked }
+            : track
+        ),
+      })),
+
+      renameTrack: (trackId, name) => set((state) => ({
+        tracks: state.tracks.map(track =>
+          track.id === trackId
+            ? { ...track, name }
+            : track
+        ),
+      })),
+
+      setTrackHeight: (trackId, height) => set((state) => ({
+        tracks: state.tracks.map(track =>
+          track.id === trackId
+            ? { ...track, height: Math.max(60, Math.min(200, height)) }
             : track
         ),
       })),
