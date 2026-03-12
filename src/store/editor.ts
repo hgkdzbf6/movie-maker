@@ -17,6 +17,12 @@ export interface Scene {
   trimStart?: number;
   transitionType?: 'fade' | 'crossDissolve' | 'push' | 'zoom' | 'wipe';
   transitionDirection?: 'left' | 'right' | 'up' | 'down';
+  // 音频控制
+  volume?: number; // 基础音量 (0-1)
+  fadeInDuration?: number; // 淡入时长（帧数）
+  fadeOutDuration?: number; // 淡出时长（帧数）
+  volumeKeyframes?: Array<{ frame: number; volume: number }>; // 音量关键帧
+  audioEffect?: 'none' | 'noise-reduction' | 'equalizer-bass' | 'equalizer-treble' | 'compressor';
   content?: {
     text?: string;
     assetId?: string;
@@ -212,6 +218,14 @@ interface EditorState {
   // 文本操作
   addTextScene: (text: Omit<Scene, 'id'>) => void;
   updateTextContent: (sceneId: string, content: Partial<Scene['content']>) => void;
+
+  // 音频操作
+  updateAudioVolume: (sceneId: string, volume: number) => void;
+  setAudioFade: (sceneId: string, fadeInDuration?: number, fadeOutDuration?: number) => void;
+  addVolumeKeyframe: (sceneId: string, frame: number, volume: number) => void;
+  removeVolumeKeyframe: (sceneId: string, frame: number) => void;
+  updateVolumeKeyframe: (sceneId: string, oldFrame: number, newFrame: number, volume: number) => void;
+  setAudioEffect: (sceneId: string, effect: Scene['audioEffect']) => void;
 
   // Debug / Project file
   resetEditor: () => void;
@@ -829,6 +843,119 @@ export const useEditorStore = create<EditorState>()(
             scene.id === sceneId
               ? { ...scene, content: { ...scene.content, ...content } }
               : scene
+          ),
+        })),
+      })),
+
+      // 音频操作
+      updateAudioVolume: (sceneId, volume) => set((state) => ({
+        scenes: state.scenes.map(scene =>
+          scene.id === sceneId ? { ...scene, volume: Math.max(0, Math.min(1, volume)) } : scene
+        ),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene =>
+            scene.id === sceneId ? { ...scene, volume: Math.max(0, Math.min(1, volume)) } : scene
+          ),
+        })),
+      })),
+
+      setAudioFade: (sceneId, fadeInDuration, fadeOutDuration) => set((state) => ({
+        scenes: state.scenes.map(scene =>
+          scene.id === sceneId
+            ? { ...scene, fadeInDuration, fadeOutDuration }
+            : scene
+        ),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene =>
+            scene.id === sceneId
+              ? { ...scene, fadeInDuration, fadeOutDuration }
+              : scene
+          ),
+        })),
+      })),
+
+      addVolumeKeyframe: (sceneId, frame, volume) => set((state) => ({
+        scenes: state.scenes.map(scene => {
+          if (scene.id !== sceneId) return scene;
+          const keyframes = scene.volumeKeyframes || [];
+          const existingIndex = keyframes.findIndex(kf => kf.frame === frame);
+          if (existingIndex >= 0) {
+            // 更新现有关键帧
+            const newKeyframes = [...keyframes];
+            newKeyframes[existingIndex] = { frame, volume: Math.max(0, Math.min(1, volume)) };
+            return { ...scene, volumeKeyframes: newKeyframes };
+          } else {
+            // 添加新关键帧并排序
+            const newKeyframes = [...keyframes, { frame, volume: Math.max(0, Math.min(1, volume)) }];
+            newKeyframes.sort((a, b) => a.frame - b.frame);
+            return { ...scene, volumeKeyframes: newKeyframes };
+          }
+        }),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene => {
+            if (scene.id !== sceneId) return scene;
+            const keyframes = scene.volumeKeyframes || [];
+            const existingIndex = keyframes.findIndex(kf => kf.frame === frame);
+            if (existingIndex >= 0) {
+              const newKeyframes = [...keyframes];
+              newKeyframes[existingIndex] = { frame, volume: Math.max(0, Math.min(1, volume)) };
+              return { ...scene, volumeKeyframes: newKeyframes };
+            } else {
+              const newKeyframes = [...keyframes, { frame, volume: Math.max(0, Math.min(1, volume)) }];
+              newKeyframes.sort((a, b) => a.frame - b.frame);
+              return { ...scene, volumeKeyframes: newKeyframes };
+            }
+          }),
+        })),
+      })),
+
+      removeVolumeKeyframe: (sceneId, frame) => set((state) => ({
+        scenes: state.scenes.map(scene =>
+          scene.id === sceneId
+            ? { ...scene, volumeKeyframes: (scene.volumeKeyframes || []).filter(kf => kf.frame !== frame) }
+            : scene
+        ),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene =>
+            scene.id === sceneId
+              ? { ...scene, volumeKeyframes: (scene.volumeKeyframes || []).filter(kf => kf.frame !== frame) }
+              : scene
+          ),
+        })),
+      })),
+
+      updateVolumeKeyframe: (sceneId, oldFrame, newFrame, volume) => set((state) => ({
+        scenes: state.scenes.map(scene => {
+          if (scene.id !== sceneId) return scene;
+          const keyframes = (scene.volumeKeyframes || []).filter(kf => kf.frame !== oldFrame);
+          keyframes.push({ frame: newFrame, volume: Math.max(0, Math.min(1, volume)) });
+          keyframes.sort((a, b) => a.frame - b.frame);
+          return { ...scene, volumeKeyframes: keyframes };
+        }),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene => {
+            if (scene.id !== sceneId) return scene;
+            const keyframes = (scene.volumeKeyframes || []).filter(kf => kf.frame !== oldFrame);
+            keyframes.push({ frame: newFrame, volume: Math.max(0, Math.min(1, volume)) });
+            keyframes.sort((a, b) => a.frame - b.frame);
+            return { ...scene, volumeKeyframes: keyframes };
+          }),
+        })),
+      })),
+
+      setAudioEffect: (sceneId, effect) => set((state) => ({
+        scenes: state.scenes.map(scene =>
+          scene.id === sceneId ? { ...scene, audioEffect: effect } : scene
+        ),
+        tracks: state.tracks.map(track => ({
+          ...track,
+          scenes: track.scenes.map(scene =>
+            scene.id === sceneId ? { ...scene, audioEffect: effect } : scene
           ),
         })),
       })),

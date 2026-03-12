@@ -11,6 +11,7 @@ import { Timeline } from '@/components/Timeline';
 import { InspectorPanel } from '@/components/InspectorPanel';
 import { TransitionPanel } from '@/components/TransitionPanel';
 import { TextEditorPanel } from '@/components/TextEditorPanel';
+import { AudioControlPanel } from '@/components/AudioControlPanel';
 import { validateExport } from '@/lib/export-validator';
 
 export default function EditorPage() {
@@ -1158,6 +1159,9 @@ export default function EditorPage() {
 
       {/* 文本编辑器面板 */}
       <TextEditorPanel />
+
+      {/* 音频控制面板 */}
+      <AudioControlPanel />
     </div>
   );
 }
