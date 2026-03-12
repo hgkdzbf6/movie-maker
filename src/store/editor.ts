@@ -77,6 +77,8 @@ export interface Asset {
   createdAt?: string;
   sampleRate?: number;
   numberOfChannels?: number;
+  tags?: string[]; // 标签列表
+  color?: string; // 颜色标记 (hex color)
 }
 
 export interface Project {
@@ -153,6 +155,8 @@ interface EditorState {
   // 素材库状态
   assetFilter: 'all' | 'image' | 'video' | 'audio';
   selectedAssetId: string | null;
+  assetSearchQuery: string;
+  assetViewMode: 'grid' | 'list';
 
   // 导出设置
   exportSettings: ExportSettings;
@@ -195,6 +199,12 @@ interface EditorState {
   // 素材库操作
   setAssetFilter: (filter: 'all' | 'image' | 'video' | 'audio') => void;
   selectAsset: (id: string | null) => void;
+  setAssetSearchQuery: (query: string) => void;
+  setAssetViewMode: (mode: 'grid' | 'list') => void;
+  updateAssetTags: (assetId: string, tags: string[]) => void;
+  updateAssetColor: (assetId: string, color: string | undefined) => void;
+  addAssetTag: (assetId: string, tag: string) => void;
+  removeAssetTag: (assetId: string, tag: string) => void;
 
   // 导出设置
   setExportSettings: (settings: Partial<ExportSettings>) => void;
@@ -329,6 +339,8 @@ export const useEditorStore = create<EditorState>()(
       // 素材库状态
       assetFilter: 'all',
       selectedAssetId: null,
+      assetSearchQuery: '',
+      assetViewMode: 'grid',
 
       // 导出设置
       exportSettings: {
@@ -664,6 +676,39 @@ export const useEditorStore = create<EditorState>()(
       setAssetFilter: (filter) => set({ assetFilter: filter }),
 
       selectAsset: (id) => set({ selectedAssetId: id }),
+
+      setAssetSearchQuery: (query) => set({ assetSearchQuery: query }),
+
+      setAssetViewMode: (mode) => set({ assetViewMode: mode }),
+
+      updateAssetTags: (assetId, tags) => set((state) => ({
+        assets: state.assets.map(asset =>
+          asset.id === assetId ? { ...asset, tags } : asset
+        ),
+      })),
+
+      updateAssetColor: (assetId, color) => set((state) => ({
+        assets: state.assets.map(asset =>
+          asset.id === assetId ? { ...asset, color } : asset
+        ),
+      })),
+
+      addAssetTag: (assetId, tag) => set((state) => ({
+        assets: state.assets.map(asset => {
+          if (asset.id !== assetId) return asset;
+          const tags = asset.tags || [];
+          if (tags.includes(tag)) return asset;
+          return { ...asset, tags: [...tags, tag] };
+        }),
+      })),
+
+      removeAssetTag: (assetId, tag) => set((state) => ({
+        assets: state.assets.map(asset => {
+          if (asset.id !== assetId) return asset;
+          const tags = asset.tags || [];
+          return { ...asset, tags: tags.filter(t => t !== tag) };
+        }),
+      })),
 
       // 导出设置
       setExportSettings: (settings) => set((state) => ({

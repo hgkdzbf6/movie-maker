@@ -29,9 +29,14 @@ export default function EditorPage() {
     assets,
     selectedAssetId,
     assetFilter,
+    assetSearchQuery,
+    assetViewMode,
     setAssetFilter,
+    setAssetSearchQuery,
     selectAsset,
     deleteAsset,
+    updateAssetTags,
+    updateAssetColor,
     selectScene,
     deleteScene,
     duplicateScene,
@@ -765,11 +770,24 @@ export default function EditorPage() {
                 ))}
               </div>
 
+              {/* 搜索框 */}
+              <div className="px-2 mb-2">
+                <input
+                  type="text"
+                  value={assetSearchQuery}
+                  onChange={(e) => setAssetSearchQuery(e.target.value)}
+                  placeholder="搜索素材名称或标签..."
+                  className="w-full px-3 py-2 text-sm bg-gray-800 text-gray-300 border border-gray-700 rounded focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
               {/* 素材列表 */}
               <div className="flex-1 overflow-y-auto min-h-0">
                 <AssetList
                   assets={assets}
                   filter={assetFilter}
+                  searchQuery={assetSearchQuery}
+                  viewMode={assetViewMode}
                   onDelete={handleAssetDelete}
                   onSelect={handleAssetSelect}
                   selectedAsset={selectedAsset || null}
@@ -777,6 +795,8 @@ export default function EditorPage() {
                   onDragEnd={handleAssetDragEnd}
                   isDragging={isDraggingAsset}
                   draggedAsset={draggedAsset}
+                  onUpdateTags={updateAssetTags}
+                  onUpdateColor={updateAssetColor}
                 />
               </div>
             </div>
