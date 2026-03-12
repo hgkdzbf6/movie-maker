@@ -12,6 +12,8 @@ import { InspectorPanel } from '@/components/InspectorPanel';
 import { TransitionPanel } from '@/components/TransitionPanel';
 import { TextEditorPanel } from '@/components/TextEditorPanel';
 import { AudioControlPanel } from '@/components/AudioControlPanel';
+import { ShortcutHelpPanel } from '@/components/ShortcutHelpPanel';
+import { useEditorShortcuts } from '@/hooks/useEditorShortcuts';
 import { validateExport } from '@/lib/export-validator';
 
 export default function EditorPage() {
@@ -41,6 +43,9 @@ export default function EditorPage() {
     canUndo,
     canRedo,
   } = useEditorStore();
+
+  // 注册快捷键
+  useEditorShortcuts();
 
   const [activePanel, setActivePanel] = useState<'timeline' | 'assets' | 'inspector'>('timeline');
   const [, setAssetFiles] = useState<AssetFile[]>([]);
@@ -1162,6 +1167,9 @@ export default function EditorPage() {
 
       {/* 音频控制面板 */}
       <AudioControlPanel />
+
+      {/* 快捷键帮助面板 */}
+      <ShortcutHelpPanel />
     </div>
   );
 }
