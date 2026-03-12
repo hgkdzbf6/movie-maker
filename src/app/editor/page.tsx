@@ -14,6 +14,7 @@ import { TextEditorPanel } from '@/components/TextEditorPanel';
 import { AudioControlPanel } from '@/components/AudioControlPanel';
 import { VideoEffectPanel } from '@/components/VideoEffectPanel';
 import { ShortcutHelpPanel } from '@/components/ShortcutHelpPanel';
+import { VersionHistoryPanel } from '@/components/VersionHistoryPanel';
 import { useEditorShortcuts } from '@/hooks/useEditorShortcuts';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { validateExport } from '@/lib/export-validator';
@@ -1248,6 +1249,9 @@ export default function EditorPage() {
 
       {/* 快捷键帮助面板 */}
       <ShortcutHelpPanel />
+
+      {/* 版本历史面板 */}
+      <VersionHistoryPanel />
     </div>
   );
 }
